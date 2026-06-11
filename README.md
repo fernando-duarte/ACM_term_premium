@@ -100,8 +100,9 @@ reporting a single failure message:
   the latest GSW date are *interior gaps* and always fail.  Missing dates
   after the latest GSW date are *tail gaps*: silently tolerated when ≤
   `--max-tail-gap-business-days` (default 5) business days old; a `WARNING`
-  is printed for gaps of 6–15 business days; gaps beyond 15 business days
-  fail.  This handles the typical 1-business-day publication lag between the
+  is printed for gaps above that tolerance up to 15 business days; gaps
+  beyond 15 business days always fail, regardless of the configured
+  tolerance.  This handles the typical 1-business-day publication lag between the
   official NY Fed workbook and the GSW feed without breaking the CI check.
 - **ACMY family (fitted yields):** per-column max absolute diff <
   `--acmy-max-abs-diff-bp` (default `1e-4` bp).

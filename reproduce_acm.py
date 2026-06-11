@@ -506,6 +506,7 @@ def compare_panel(
                 max_abs_diff_bp=("max_abs_diff_bp", "max"),
                 mean_abs_diff_bp=("mean_abs_diff_bp", "mean"),
                 max_rmse_bp=("rmse_bp", "max"),
+                max_abs_signed_mean_bp=("signed_mean_bp", lambda s: s.abs().max()),
             )
             .reset_index()
         )
@@ -532,8 +533,8 @@ def check_coverage_gaps(
     """Check coverage gaps and append failure messages to failures list.
 
     Interior gaps (≤ gsw_last) always fail.  Tail gaps (> gsw_last) are
-    tolerated when ≤ max_tail_gap_bd business days old, warned when 6-15 bd,
-    and failed when > 15 bd.
+    tolerated silently when ≤ max_tail_gap_bd business days old, warned
+    when in (max_tail_gap_bd, 15] bd, and failed when > 15 bd.
     """
     if not len(missing):
         return
@@ -961,7 +962,8 @@ def main() -> None:
         help=(
             "Maximum recent tail gap (in business days from the latest GSW date) "
             "that is silently tolerated when official dates are missing from GSW. "
-            "Gaps of 6-15 bd emit a WARNING. Gaps > 15 bd fail. Default: 5."
+            "Gaps above this tolerance but within 15 bd emit a WARNING. "
+            "Gaps > 15 bd always fail. Default: 5."
         ),
     )
     parser.add_argument(

@@ -91,9 +91,9 @@ def test_coverage_gap_interior_fails():
 
 
 def test_coverage_gap_tail_within_tolerance_passes():
-    # gsw_last = 2026-06-05 (Thursday).
-    # 2026-06-06 is a Saturday — np.busday_count counts Mon-Fri.
-    # Use 2026-06-08 (Monday) which is 1 business day after 2026-06-05 (Friday).
+    # gsw_last = 2026-06-05 (Friday); 2026-06-06/07 are the weekend, and
+    # np.busday_count counts Mon-Fri, so 2026-06-08 (Monday) is 1 business
+    # day after gsw_last.
     gsw_last = _make_date("2026-06-05")
     missing = _make_dti("2026-06-08")  # 1 bd gap
     failures: list[str] = []
@@ -155,7 +155,7 @@ def test_per_family_rny_rmse_exceeded_produces_failure():
     # so rmse is 0.1 bp (> default 0.005 threshold).
     gen = _clean_panel(dates)
     off = gen.copy()
-    # Shift ACMRNY01 by 0.001 (in decimal = 0.1 bp) in official
+    # Shift ACMRNY01 by 0.001 in panel units (percent) = 0.1 bp in official
     off["ACMRNY01"] = gen["ACMRNY01"] + 0.001
 
     from reproduce_acm import compare_panel
@@ -243,7 +243,7 @@ def test_bias_gate_detects_dense_systematic_offset():
 
     gen = _clean_panel([d.strftime("%Y-%m-%d") for d in dates])
     off = gen.copy()
-    # systematic offset of 0.0002 decimal = 0.02 bp on one ACMRNY column
+    # systematic offset of 0.0002 in panel units (percent) = 0.02 bp on one ACMRNY column
     off["ACMRNY01"] = gen["ACMRNY01"] + 0.0002
 
     from reproduce_acm import compare_panel
@@ -269,6 +269,27 @@ def test_bias_gate_detects_dense_systematic_offset():
         )
 
     assert "|signed_mean|" in str(exc_info.value) or "bias" in str(exc_info.value).lower()
+
+
+# ---------------------------------------------------------------------------
+# Per-family summary: bias statistic is included in the aggregate
+# ---------------------------------------------------------------------------
+
+
+def test_by_family_summary_includes_bias_statistic():
+    from reproduce_acm import compare_panel
+
+    dates = ["2020-01-31", "2020-02-28", "2020-03-31"]
+    gen = _clean_panel(dates)
+    off = gen.copy()
+    # systematic offset of 0.0002 in panel units (percent) = 0.02 bp
+    off["ACMRNY01"] = gen["ACMRNY01"] + 0.0002
+
+    _, by_family = compare_panel(gen, off)
+
+    assert "max_abs_signed_mean_bp" in by_family.columns
+    rny = by_family[by_family["family"] == "ACMRNY"]
+    assert float(rny["max_abs_signed_mean_bp"].iloc[0]) == pytest.approx(0.02, rel=1e-6)
 
 
 # ---------------------------------------------------------------------------
