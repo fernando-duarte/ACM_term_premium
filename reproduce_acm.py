@@ -761,7 +761,7 @@ def assert_official_reproduced(
     missing_monthly: pd.DatetimeIndex,
     missing_daily: pd.DatetimeIndex,
     max_abs_diff_bp: float,
-    gsw_last: pd.Timestamp | None = None,
+    gsw_last: pd.Timestamp,
     max_tail_gap_bd: int = 5,
     acmy_max_abs_diff_bp: float = 1e-4,
     max_rmse_bp: float = 0.005,
@@ -772,9 +772,8 @@ def assert_official_reproduced(
     failures: list[str] = []
 
     # Coverage gap checks (interior = hard fail, tail = tolerance by age)
-    _gsw_last = gsw_last if gsw_last is not None else pd.Timestamp("1900-01-01")
-    check_coverage_gaps(missing_monthly, _gsw_last, "monthly", max_tail_gap_bd, failures)
-    check_coverage_gaps(missing_daily, _gsw_last, "daily", max_tail_gap_bd, failures)
+    check_coverage_gaps(missing_monthly, gsw_last, "monthly", max_tail_gap_bd, failures)
+    check_coverage_gaps(missing_daily, gsw_last, "daily", max_tail_gap_bd, failures)
 
     # Per-family reproduction checks
     panels_named = (("monthly", monthly_summary), ("daily", daily_summary))
@@ -970,9 +969,10 @@ def main() -> None:
         type=float,
         default=None,
         help=(
-            "Deprecated compatibility option. With --official, exit non-zero "
-            "if the maximum absolute reproduction difference (basis points) "
-            "exceeds this value."
+            "Deprecated compatibility option. With --official, run the full "
+            "reproduction verification (coverage, identity, schema, and "
+            "per-family gates) using this value as the maximum absolute "
+            "difference threshold in basis points."
         ),
     )
     args = parser.parse_args()
