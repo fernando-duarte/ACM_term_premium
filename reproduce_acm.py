@@ -458,6 +458,15 @@ def expanded_monthly_panel(
     return acm_panel(miy, tp, rny, EXPANDED_MONTHLY_MATURITIES)
 
 
+def _column_family(column: str) -> str:
+    """Return the ACM family prefix for a column name."""
+    if column.startswith("ACMRNY"):
+        return "ACMRNY"
+    if column.startswith("ACMTP"):
+        return "ACMTP"
+    return "ACMY"
+
+
 def compare_panel(
     generated: pd.DataFrame,
     official: pd.DataFrame,
@@ -473,17 +482,15 @@ def compare_panel(
             continue
         abs_series = series.abs()
         max_date = abs_series.idxmax()
-        family = column[:4] if column.startswith("ACMY") else (
-            "ACMTP" if column.startswith("ACMTP") else "ACMRNY"
-        )
         rows.append(
             {
-                "family": family,
+                "family": _column_family(column),
                 "column": column,
                 "n": int(series.shape[0]),
                 "max_abs_diff_bp": float(abs_series.loc[max_date] * 100.0),
                 "mean_abs_diff_bp": float(abs_series.mean() * 100.0),
                 "rmse_bp": float(np.sqrt(np.mean(np.square(series))) * 100.0),
+                "signed_mean_bp": float(series.mean() * 100.0),
                 "max_abs_diff_date": pd.Timestamp(max_date).strftime("%Y-%m-%d"),
                 "generated_at_max": float(generated.loc[max_date, column]),
                 "official_at_max": float(official.loc[max_date, column]),
@@ -508,6 +515,136 @@ def compare_panel(
             .reset_index()
         )
     return summary, by_family
+
+
+def classify_tail_gap(
+    missing: pd.DatetimeIndex,
+    gsw_last: pd.Timestamp,
+) -> tuple[pd.DatetimeIndex, pd.DatetimeIndex]:
+    """Split missing dates into interior (≤ gsw_last) and tail (> gsw_last)."""
+    interior = missing[missing <= gsw_last]
+    tail = missing[missing > gsw_last]
+    return interior, tail
+
+
+def check_coverage_gaps(
+    missing: pd.DatetimeIndex,
+    gsw_last: pd.Timestamp,
+    label: str,
+    max_tail_gap_bd: int,
+    failures: list[str],
+) -> None:
+    """Check coverage gaps and append failure messages to failures list.
+
+    Interior gaps (≤ gsw_last) always fail.  Tail gaps (> gsw_last) are
+    tolerated when ≤ max_tail_gap_bd business days old, warned when 6-15 bd,
+    and failed when > 15 bd.
+    """
+    if not len(missing):
+        return
+
+    interior, tail = classify_tail_gap(missing, gsw_last)
+
+    if len(interior):
+        dates_str = ", ".join(d.strftime("%Y-%m-%d") for d in interior)
+        failures.append(
+            f"Official {label} dates missing from GSW input (interior gaps): {dates_str}"
+        )
+
+    for missing_date in tail:
+        age_bd = int(np.busday_count(gsw_last.date(), missing_date.date()))
+        date_str = missing_date.strftime("%Y-%m-%d")
+        if age_bd <= max_tail_gap_bd:
+            pass  # tolerate silently
+        elif age_bd <= 15:
+            print(
+                f"WARNING: Official {label} date {date_str} missing from GSW "
+                f"(tail gap {age_bd} bd from gsw_last {gsw_last.date()}); "
+                f"within 15-bd warning window."
+            )
+        else:
+            failures.append(
+                f"Official {label} date {date_str} missing from GSW "
+                f"(tail gap {age_bd} bd from gsw_last {gsw_last.date()} "
+                f"exceeds 15-bd maximum)."
+            )
+
+
+def check_identity_gate(
+    panel: pd.DataFrame,
+    label: str,
+    failures: list[str],
+    threshold_bp: float = 1e-8,
+) -> float:
+    """Verify ACMY{n} - ACMRNY{n} - ACMTP{n} ≈ 0 for every maturity.
+
+    Returns the maximum residual in basis points across all maturities.
+    Appends a failure message to failures if any residual exceeds threshold_bp.
+    """
+    max_residual = 0.0
+    for n in PUBLISHED_MATURITIES:
+        suffix = maturity_suffix(n)
+        col_y = f"ACMY{suffix}"
+        col_rny = f"ACMRNY{suffix}"
+        col_tp = f"ACMTP{suffix}"
+        if col_y not in panel.columns or col_rny not in panel.columns or col_tp not in panel.columns:
+            failures.append(
+                f"Identity gate ({label}): columns {col_y}, {col_rny}, or {col_tp} missing."
+            )
+            return float("nan")
+        residual_bp = (panel[col_y] - panel[col_rny] - panel[col_tp]).abs().max()
+        if residual_bp > max_residual:
+            max_residual = float(residual_bp)
+
+    if max_residual >= threshold_bp:
+        failures.append(
+            f"Identity gate ({label}): max |ACMY - ACMRNY - ACMTP| = "
+            f"{max_residual:.6g} bp >= {threshold_bp:.6g} bp."
+        )
+    return max_residual
+
+
+def check_schema_gate(
+    panel: pd.DataFrame,
+    label: str,
+    maturities: list[int],
+    failures: list[str],
+) -> None:
+    """Check schema, uniqueness, sorting, and finiteness of a generated panel.
+
+    Appends precise failure messages to failures if any check fails.
+    """
+    expected_cols = []
+    for prefix in ("ACMY", "ACMTP", "ACMRNY"):
+        for n in maturities:
+            expected_cols.append(f"{prefix}{maturity_suffix(n)}")
+
+    missing_cols = [c for c in expected_cols if c not in panel.columns]
+    if missing_cols:
+        failures.append(
+            f"Schema gate ({label}): missing expected columns: {missing_cols[:5]}"
+            + ("..." if len(missing_cols) > 5 else "")
+        )
+
+    if not panel.index.is_monotonic_increasing:
+        failures.append(f"Schema gate ({label}): DATE index is not sorted ascending.")
+
+    if not panel.index.is_unique:
+        dupes = panel.index[panel.index.duplicated()].tolist()
+        failures.append(
+            f"Schema gate ({label}): duplicate DATE entries: "
+            + ", ".join(str(d) for d in dupes[:5])
+        )
+
+    present_cols = [c for c in expected_cols if c in panel.columns]
+    for col in present_cols:
+        bad = ~np.isfinite(panel[col].to_numpy(dtype=float))
+        if bad.any():
+            first_bad = panel.index[bad][0]
+            failures.append(
+                f"Schema gate ({label}): column {col} has NaN/Inf "
+                f"(first occurrence at {first_bad})."
+            )
 
 
 def panel_with_date_column(panel: pd.DataFrame, csv_dates: bool = False) -> pd.DataFrame:
@@ -621,50 +758,118 @@ def assert_official_reproduced(
     missing_monthly: pd.DatetimeIndex,
     missing_daily: pd.DatetimeIndex,
     max_abs_diff_bp: float,
+    gsw_last: pd.Timestamp | None = None,
+    max_tail_gap_bd: int = 5,
+    acmy_max_abs_diff_bp: float = 1e-4,
+    max_rmse_bp: float = 0.005,
+    max_bias_bp: float = 0.001,
+    generated_monthly: pd.DataFrame | None = None,
+    generated_daily: pd.DataFrame | None = None,
 ) -> None:
-    failures = []
+    failures: list[str] = []
 
-    if len(missing_monthly):
-        missing = ", ".join(d.strftime("%Y-%m-%d") for d in missing_monthly)
-        failures.append(f"Official monthly dates missing from GSW input: {missing}")
+    # Coverage gap checks (interior = hard fail, tail = tolerance by age)
+    _gsw_last = gsw_last if gsw_last is not None else pd.Timestamp("1900-01-01")
+    check_coverage_gaps(missing_monthly, _gsw_last, "monthly", max_tail_gap_bd, failures)
+    check_coverage_gaps(missing_daily, _gsw_last, "daily", max_tail_gap_bd, failures)
 
-    if len(missing_daily):
-        missing = ", ".join(d.strftime("%Y-%m-%d") for d in missing_daily)
-        failures.append(f"Official daily dates missing from GSW input: {missing}")
-
-    panels = (("monthly", monthly_summary), ("daily", daily_summary))
-    for panel_name, summary in panels:
-        if summary is None or summary.empty:
+    # Per-family reproduction checks
+    panels_named = (("monthly", monthly_summary), ("daily", daily_summary))
+    for panel_name, summary in panels_named:
+        if summary is None:
+            # Not applicable for this run (e.g. no official source provided)
+            continue
+        if summary.empty:
             failures.append(f"{panel_name.capitalize()} comparison summary is empty.")
             continue
 
-        exceeded = summary[summary["max_abs_diff_bp"] > max_abs_diff_bp]
-        if not exceeded.empty:
-            worst = exceeded.sort_values("max_abs_diff_bp", ascending=False).iloc[0]
-            failures.append(
-                (
-                    f"{panel_name.capitalize()} {worst['column']} failed reproduction: "
-                    f"max_abs_diff={worst['max_abs_diff_bp']:.12g} bp exceeds "
-                    f"{max_abs_diff_bp:.12g} bp at {worst['max_abs_diff_date']} "
-                    f"(generated={worst['generated_at_max']:.12g}, "
-                    f"official={worst['official_at_max']:.12g}, "
-                    f"diff={worst['diff_at_max_bp']:.12g} bp)."
-                )
-            )
+        for _, row in summary.iterrows():
+            family = row["family"]
+            col = row["column"]
+            max_diff = float(row["max_abs_diff_bp"])
+            rmse = float(row["rmse_bp"])
+            bias = abs(float(row.get("signed_mean_bp", 0.0)))
+
+            if family == "ACMY":
+                if max_diff >= acmy_max_abs_diff_bp:
+                    failures.append(
+                        f"{panel_name.capitalize()} {col} (ACMY): "
+                        f"max_abs_diff={max_diff:.12g} bp >= {acmy_max_abs_diff_bp:.12g} bp "
+                        f"at {row['max_abs_diff_date']}."
+                    )
+            else:
+                if max_diff >= max_abs_diff_bp:
+                    failures.append(
+                        f"{panel_name.capitalize()} {col} ({family}): "
+                        f"max_abs_diff={max_diff:.12g} bp >= {max_abs_diff_bp:.12g} bp "
+                        f"at {row['max_abs_diff_date']}."
+                    )
+                if rmse >= max_rmse_bp:
+                    failures.append(
+                        f"{panel_name.capitalize()} {col} ({family}): "
+                        f"rmse={rmse:.12g} bp >= {max_rmse_bp:.12g} bp."
+                    )
+                if bias >= max_bias_bp:
+                    failures.append(
+                        f"{panel_name.capitalize()} {col} ({family}): "
+                        f"|signed_mean|={bias:.12g} bp >= {max_bias_bp:.12g} bp."
+                    )
+
+    # Identity gate: ACMY - ACMRNY - ACMTP = 0 for generated panels
+    identity_max = 0.0
+    for gen_panel, gen_label in (
+        (generated_monthly, "generated monthly"),
+        (generated_daily, "generated daily"),
+    ):
+        if gen_panel is not None and not gen_panel.empty:
+            residual = check_identity_gate(gen_panel, gen_label, failures)
+            if np.isfinite(residual):
+                identity_max = max(identity_max, residual)
+
+    # Schema/finiteness gate on generated panels
+    for gen_panel, gen_label in (
+        (generated_monthly, "generated monthly"),
+        (generated_daily, "generated daily"),
+    ):
+        if gen_panel is not None and not gen_panel.empty:
+            check_schema_gate(gen_panel, gen_label, PUBLISHED_MATURITIES, failures)
 
     if failures:
         message = "\n".join(f" - {failure}" for failure in failures)
         raise SystemExit(f"Official ACM reproduction check FAILED:\n{message}")
 
-    worst_diffs = [
-        float(summary["max_abs_diff_bp"].max())
-        for _, summary in panels
-        if summary is not None and not summary.empty
-    ]
-    worst_abs_diff_bp = max(worst_diffs, default=0.0)
+    # Build per-family summary for the PASS message
+    family_stats: dict[str, dict[str, float]] = {}
+    for _, summary in panels_named:
+        if summary is None or summary.empty:
+            continue
+        for _, row in summary.iterrows():
+            fam = row["family"]
+            if fam not in family_stats:
+                family_stats[fam] = {"max_diff": 0.0, "max_rmse": 0.0, "max_bias": 0.0}
+            family_stats[fam]["max_diff"] = max(
+                family_stats[fam]["max_diff"], float(row["max_abs_diff_bp"])
+            )
+            family_stats[fam]["max_rmse"] = max(
+                family_stats[fam]["max_rmse"], float(row["rmse_bp"])
+            )
+            family_stats[fam]["max_bias"] = max(
+                family_stats[fam]["max_bias"], abs(float(row.get("signed_mean_bp", 0.0)))
+            )
+
+    fam_lines = []
+    for fam, stats in sorted(family_stats.items()):
+        fam_lines.append(
+            f"  {fam}: max_abs_diff={stats['max_diff']:.6g} bp, "
+            f"rmse={stats['max_rmse']:.6g} bp, "
+            f"|bias|={stats['max_bias']:.6g} bp"
+        )
+    fam_summary = "\n".join(fam_lines)
+
     print(
-        "\nOfficial ACM reproduction check PASSED: "
-        f"max abs diff {worst_abs_diff_bp:.12g} bp <= {max_abs_diff_bp:.12g} bp."
+        f"\nOfficial ACM reproduction check PASSED.\n"
+        f"Per-family stats:\n{fam_summary}\n"
+        f"Identity residual (max |ACMY-ACMRNY-ACMTP|): {identity_max:.6g} bp"
     )
 
 
@@ -715,7 +920,47 @@ def main() -> None:
         "--max-abs-diff-bp",
         type=float,
         default=0.01,
-        help="Maximum allowed absolute difference, in basis points, for strict reproduction.",
+        help=(
+            "Maximum allowed per-column absolute difference in basis points for "
+            "ACMRNY and ACMTP families. Default: 0.01."
+        ),
+    )
+    parser.add_argument(
+        "--acmy-max-abs-diff-bp",
+        type=float,
+        default=1e-4,
+        help=(
+            "Maximum allowed per-column absolute difference in basis points for "
+            "the ACMY family (fitted yields). Default: 1e-4."
+        ),
+    )
+    parser.add_argument(
+        "--max-rmse-bp",
+        type=float,
+        default=0.005,
+        help=(
+            "Maximum allowed per-column RMSE in basis points for "
+            "ACMRNY and ACMTP families. Default: 0.005."
+        ),
+    )
+    parser.add_argument(
+        "--max-bias-bp",
+        type=float,
+        default=0.001,
+        help=(
+            "Maximum allowed per-column |signed mean| in basis points for "
+            "ACMRNY and ACMTP families. Default: 0.001."
+        ),
+    )
+    parser.add_argument(
+        "--max-tail-gap-business-days",
+        type=int,
+        default=5,
+        help=(
+            "Maximum recent tail gap (in business days from the latest GSW date) "
+            "that is silently tolerated when official dates are missing from GSW. "
+            "Gaps of 6-15 bd emit a WARNING. Gaps > 15 bd fail. Default: 5."
+        ),
     )
     parser.add_argument(
         "--check-tolerance-bp",
@@ -768,8 +1013,22 @@ def main() -> None:
 
     missing_monthly = monthly_dates.difference(curve_d_all.index)
     if len(missing_monthly):
-        missing = ", ".join(d.strftime("%Y-%m-%d") for d in missing_monthly)
-        raise ValueError(f"GSW curve is missing required monthly dates: {missing}")
+        gsw_last = curve_d_all.index.max()
+        interior_m, tail_m = classify_tail_gap(missing_monthly, gsw_last)
+        if len(interior_m):
+            interior_str = ", ".join(d.strftime("%Y-%m-%d") for d in interior_m)
+            raise ValueError(
+                f"GSW curve is missing required monthly dates (interior gaps): {interior_str}"
+            )
+        # Tail-only gaps: warn and continue (the assertion gate will apply limits)
+        for missing_date in tail_m:
+            age_bd = int(np.busday_count(gsw_last.date(), missing_date.date()))
+            print(
+                f"INFO: Official monthly date {missing_date.strftime('%Y-%m-%d')} "
+                f"not in GSW (tail gap: {age_bd} bd after gsw_last {gsw_last.date()})."
+            )
+        # Drop tail-missing dates so we only compute on available GSW dates
+        monthly_dates = monthly_dates.difference(tail_m)
 
     curve_m_raw = curve_d_all.loc[monthly_dates].copy()
 
@@ -889,6 +1148,13 @@ def main() -> None:
                 missing_monthly,
                 pd.DatetimeIndex([]),
                 args.check_tolerance_bp,
+                gsw_last=curve_d_all.index.max(),
+                max_tail_gap_bd=args.max_tail_gap_business_days,
+                acmy_max_abs_diff_bp=args.acmy_max_abs_diff_bp,
+                max_rmse_bp=args.max_rmse_bp,
+                max_bias_bp=args.max_bias_bp,
+                generated_monthly=generated_monthly,
+                generated_daily=generated_daily,
             )
         if args.assert_official_reproduced:
             assert_official_reproduced(
@@ -897,6 +1163,13 @@ def main() -> None:
                 missing_monthly,
                 missing_daily,
                 args.max_abs_diff_bp,
+                gsw_last=curve_d_all.index.max(),
+                max_tail_gap_bd=args.max_tail_gap_business_days,
+                acmy_max_abs_diff_bp=args.acmy_max_abs_diff_bp,
+                max_rmse_bp=args.max_rmse_bp,
+                max_bias_bp=args.max_bias_bp,
+                generated_monthly=generated_monthly,
+                generated_daily=generated_daily,
             )
     elif args.assert_official_reproduced or args.check_tolerance_bp is not None:
         raise SystemExit("Official ACM reproduction check requires --official.")

@@ -91,8 +91,54 @@ python reproduce_acm.py \
   --max-abs-diff-bp 0.01
 ```
 
-Verification also fails if required official monthly or daily dates are
-missing from the current GSW input, or if either comparison summary is empty.
+### Verification gates
+
+The assertion check applies the following gates, all accumulated before
+reporting a single failure message:
+
+- **Coverage (official dates missing from GSW):** Missing dates earlier than
+  the latest GSW date are *interior gaps* and always fail.  Missing dates
+  after the latest GSW date are *tail gaps*: silently tolerated when ≤
+  `--max-tail-gap-business-days` (default 5) business days old; a `WARNING`
+  is printed for gaps of 6–15 business days; gaps beyond 15 business days
+  fail.  This handles the typical 1-business-day publication lag between the
+  official NY Fed workbook and the GSW feed without breaking the CI check.
+- **ACMY family (fitted yields):** per-column max absolute diff <
+  `--acmy-max-abs-diff-bp` (default `1e-4` bp).
+- **ACMRNY and ACMTP families:** per-column max absolute diff <
+  `--max-abs-diff-bp` (default `0.01` bp), per-column RMSE <
+  `--max-rmse-bp` (default `0.005` bp), and per-column |signed mean| <
+  `--max-bias-bp` (default `0.001` bp).
+- **Identity:** for every maturity, |ACMY − ACMRNY − ACMTP| < 1e-8 bp in
+  the generated panels.
+- **Schema and finiteness:** the expected 30 columns are present in the
+  generated panels, the DATE index is sorted and unique, and no NaN or Inf
+  values are present.
+
+A successful run prints per-family max/RMSE/|bias| statistics and the
+identity residual.
+
+### Additional CLI flags
+
+| Flag | Default | Description |
+|---|---|---|
+| `--acmy-max-abs-diff-bp` | `1e-4` | Max allowed per-column abs diff (bp) for ACMY |
+| `--max-rmse-bp` | `0.005` | Max allowed per-column RMSE (bp) for ACMRNY/ACMTP |
+| `--max-bias-bp` | `0.001` | Max allowed per-column \|signed mean\| (bp) for ACMRNY/ACMTP |
+| `--max-tail-gap-business-days` | `5` | Tail-gap tolerance in business days |
+
+## Tests
+
+The gate logic has a fast, self-contained unit test suite that does not
+require network access or cached data:
+
+```bash
+pytest tests/test_gates.py -q
+```
+
+Coverage includes: interior vs tail gap classification, per-family
+tolerance checks, the systematic-bias gate, the ACMY identity constraint,
+and schema/finiteness validation.
 
 ## GitHub Actions Releases
 
