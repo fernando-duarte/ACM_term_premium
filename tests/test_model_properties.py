@@ -87,14 +87,15 @@ class TestShortRateFit:
         model = nominal_acm_model
         # Input 1-month yield (monthly, decimal)
         y1_input = model.curve_m.iloc[:, 0].values
-        # Model implied 1-month yield (monthly), annualised in percent → back to decimal
+        # Model implied 1-month yield (monthly, decimal — compute_yields returns
+        # the same units as the input curve)
         y1_fitted = model.miy_m.iloc[:, 0].values
         # The short rate equation is a regression, so residuals can be non-trivial.
         # We just require R² > 0.90 and |mean error| < 50 bp.
         corr = float(np.corrcoef(y1_input, y1_fitted)[0, 1])
         mean_err = float(np.mean(np.abs(y1_input - y1_fitted)))
         assert corr > 0.90, f"1M yield correlation {corr:.4f} too low"
-        assert mean_err < 0.005, f"1M yield mean abs error {mean_err * 100:.2f} bp too large"
+        assert mean_err < 0.005, f"1M yield mean abs error {mean_err * 1e4:.2f} bp too large"
 
 
 # ===========================================================================

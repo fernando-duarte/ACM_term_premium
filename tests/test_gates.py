@@ -121,6 +121,24 @@ def test_coverage_gap_tail_beyond_limit_fails():
 
 
 # ---------------------------------------------------------------------------
+# Coverage helper: the 15-bd hard cap holds even with a larger tolerance
+# ---------------------------------------------------------------------------
+
+
+def test_coverage_gap_hard_cap_not_bypassed_by_large_tolerance():
+    gsw_last = _make_date("2026-01-01")
+    # 2026-01-29 is exactly 20 business days after 2026-01-01: beyond the
+    # documented 15-bd hard maximum, but within a tolerance of 30.
+    missing = _make_dti("2026-01-29")
+    failures: list[str] = []
+
+    check_coverage_gaps(missing, gsw_last, "daily", max_tail_gap_bd=30, failures=failures)
+
+    assert len(failures) == 1
+    assert "exceeds 15-bd maximum" in failures[0]
+
+
+# ---------------------------------------------------------------------------
 # Per-family gate: ACMY fine, ACMRNY rmse over limit → fail
 # ---------------------------------------------------------------------------
 

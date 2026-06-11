@@ -53,23 +53,26 @@ class TestGoldenOutputRegression:
         )
 
         golden = pd.read_csv(_GOLDEN_PATH, index_col="DATE", parse_dates=True)
-        # Align on common index/columns to be robust to row-count changes
-        common_idx = panel.index.intersection(golden.index)
-        common_cols = panel.columns.intersection(golden.columns)
-        assert len(common_idx) > 0, "No overlapping dates between panel and golden"
-        assert len(common_cols) > 0, "No overlapping columns between panel and golden"
-
-        diff = (
-            panel.loc[common_idx, common_cols].values - golden.loc[common_idx, common_cols].values
+        # Strict comparison: any added/removed dates or columns must fail too,
+        # not just value drift on the overlap.
+        assert panel.index.equals(golden.index), (
+            f"Panel dates differ from golden fixture: {len(panel.index)} rows generated "
+            f"vs {len(golden.index)} in golden."
         )
+        assert list(panel.columns) == list(golden.columns), (
+            f"Panel columns differ from golden fixture: {list(panel.columns)} "
+            f"vs {list(golden.columns)}."
+        )
+
+        diff = panel.values - golden.values
         max_diff = float(np.abs(diff).max())
         assert max_diff < 1e-9, (
             f"Panel deviates from golden file by {max_diff:.3e} "
             f"(threshold 1e-9). Rebuild golden if the model intentionally changed."
         )
 
-    def test_expanded_monthly_panel_matches_golden(self, nominal_acm_model):
-        """Spot-check expanded panel against golden: check a few columns round-trip."""
+    def test_expanded_monthly_panel_csv_round_trip_is_lossless(self, nominal_acm_model):
+        """Saving the expanded panel to CSV and re-loading must preserve values."""
         model = nominal_acm_model
         panel = reproduce_acm.expanded_monthly_panel(model.miy_m, model.tp_m, model.rny_m)
         # Verify self-consistency: saving then re-loading gives same values

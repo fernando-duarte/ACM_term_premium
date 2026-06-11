@@ -549,19 +549,20 @@ def check_coverage_gaps(
     for missing_date in tail:
         age_bd = int(np.busday_count(gsw_last.date(), missing_date.date()))
         date_str = missing_date.strftime("%Y-%m-%d")
-        if age_bd <= max_tail_gap_bd:
-            pass  # tolerate silently
-        elif age_bd <= 15:
-            print(
-                f"WARNING: Official {label} date {date_str} missing from GSW "
-                f"(tail gap {age_bd} bd from gsw_last {gsw_last.date()}); "
-                f"within 15-bd warning window."
-            )
-        else:
+        if age_bd > 15:
+            # Hard cap: fails regardless of the configured silent tolerance.
             failures.append(
                 f"Official {label} date {date_str} missing from GSW "
                 f"(tail gap {age_bd} bd from gsw_last {gsw_last.date()} "
                 f"exceeds 15-bd maximum)."
+            )
+        elif age_bd <= max_tail_gap_bd:
+            pass  # tolerate silently
+        else:
+            print(
+                f"WARNING: Official {label} date {date_str} missing from GSW "
+                f"(tail gap {age_bd} bd from gsw_last {gsw_last.date()}); "
+                f"within 15-bd warning window."
             )
 
 
