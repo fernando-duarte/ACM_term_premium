@@ -54,6 +54,7 @@ jobs:
           python reproduce_acm.py \
             --official "$OFFICIAL_ACM_URL" \
             --output "$OUTPUT_WORKBOOK" \
+            --refresh \
             --assert-official-reproduced \
             --max-abs-diff-bp 0.01
 
