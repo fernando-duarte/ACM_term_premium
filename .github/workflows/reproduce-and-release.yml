@@ -33,12 +33,12 @@ jobs:
       SHOULD_RELEASE: ${{ github.event_name == 'schedule' || github.event.inputs.make_release == 'true' }}
     steps:
       - name: Checkout source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: ${{ (github.event_name == 'schedule' || github.event.inputs.make_release == 'true') && 'main' || github.ref }}
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: pip
@@ -58,7 +58,7 @@ jobs:
             --max-abs-diff-bp 0.01
 
       - name: Upload expanded monthly CSV gzip
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ACMTermPremium_reproduced_monthly_6m_120m
           path: ${{ env.OUTPUT_CSV_GZ }}
