@@ -578,6 +578,9 @@ def check_identity_gate(
 ) -> float:
     """Verify ACMY{n} - ACMRNY{n} - ACMTP{n} ≈ 0 for every maturity.
 
+    Panel columns are in percent, so the residual is converted to basis
+    points (1% = 100 bp) before comparison and reporting.
+
     Returns the maximum residual in basis points across all maturities.
     Appends a failure message to failures if any residual exceeds threshold_bp.
     """
@@ -592,9 +595,11 @@ def check_identity_gate(
                 f"Identity gate ({label}): columns {col_y}, {col_rny}, or {col_tp} missing."
             )
             return float("nan")
-        residual_bp = (panel[col_y] - panel[col_rny] - panel[col_tp]).abs().max()
+        residual_bp = float(
+            (panel[col_y] - panel[col_rny] - panel[col_tp]).abs().max()
+        ) * 100.0
         if residual_bp > max_residual:
-            max_residual = float(residual_bp)
+            max_residual = residual_bp
 
     if max_residual >= threshold_bp:
         failures.append(

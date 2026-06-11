@@ -60,13 +60,19 @@ class TestRiskNeutralCoefficients:
             err_msg="b: zero λ should reproduce b_rn"
         )
 
-    def test_zero_risk_price_term_premium_near_zero_on_zero_data(self):
-        """Term premium built with λ=0 is exactly zero by construction."""
-        # Build a tiny synthetic model where we can check this directly.
-        # miy_d_zero = compute_yields(pc_d, a_rn, b_rn) — same as rny_d.
-        # tp = miy - rny = 0.
-        # We use the model fixture and just verify the arithmetic.
-        pass  # Covered structurally by TestDecompositionIdentity.
+    def test_zero_risk_prices_imply_zero_term_premium(self, nominal_acm_model):
+        """Yields priced with λ₀=λ₁=0 equal the RN yields, so tp ≡ 0."""
+        model = nominal_acm_model
+        a_zero, b_zero = model.affine_coefficients(
+            np.zeros_like(model.lambda0),
+            np.zeros_like(model.lambda1),
+        )
+        miy_zero = model.compute_yields(model.pc_m, a_zero, b_zero)
+        tp_zero = miy_zero - model.rny_m
+        max_tp = float(tp_zero.abs().max().max())
+        assert max_tp < 1e-12, (
+            f"Term premium with zero risk prices should vanish; max |tp| = {max_tp:.3e}"
+        )
 
 
 # ===========================================================================

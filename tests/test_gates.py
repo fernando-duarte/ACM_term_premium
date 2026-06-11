@@ -89,13 +89,12 @@ def test_coverage_gap_interior_fails():
 # Coverage helper: tail gap within tolerance passes silently
 # ---------------------------------------------------------------------------
 
-def test_coverage_gap_tail_within_tolerance_passes(monkeypatch):
+def test_coverage_gap_tail_within_tolerance_passes():
     # gsw_last = 2026-06-05 (Thursday).
     # 2026-06-06 is a Saturday — np.busday_count counts Mon-Fri.
     # Use 2026-06-08 (Monday) which is 1 business day after 2026-06-05 (Friday).
     gsw_last = _make_date("2026-06-05")
-    tail_date = _make_date("2026-06-08")  # 1 bd gap
-    missing = _make_dti("2026-06-08")
+    missing = _make_dti("2026-06-08")  # 1 bd gap
     failures: list[str] = []
 
     check_coverage_gaps(missing, gsw_last, "daily", max_tail_gap_bd=5, failures=failures)
@@ -254,7 +253,7 @@ def test_identity_gate_detects_violation():
     dates = ["2020-01-31", "2020-02-28"]
     panel = _clean_panel(dates)
     # Corrupt one maturity so identity breaks
-    panel["ACMY01"] = panel["ACMY01"] + 1.0  # 1 bp offset — huge violation
+    panel["ACMY01"] = panel["ACMY01"] + 1.0  # 1 percent = 100 bp — huge violation
     failures: list[str] = []
 
     check_identity_gate(panel, "test panel", failures)
@@ -275,6 +274,26 @@ def test_identity_gate_passes_when_satisfied():
     check_identity_gate(panel, "test panel", failures)
 
     assert failures == [], f"Expected no failures; got: {failures}"
+
+
+# ---------------------------------------------------------------------------
+# Identity gate: residual is measured in basis points, not panel units
+# ---------------------------------------------------------------------------
+
+def test_identity_gate_residual_is_in_basis_points():
+    dates = ["2020-01-31", "2020-02-28"]
+    panel = _clean_panel(dates)
+    # Violate the identity by 1e-9 in panel units (percent) = 1e-7 bp.
+    # This exceeds the default 1e-8 bp threshold, but would slip through
+    # unnoticed if the percent → bp conversion were dropped.
+    panel["ACMY01"] = panel["ACMY01"] + 1e-9
+    failures: list[str] = []
+
+    residual_bp = check_identity_gate(panel, "test panel", failures)
+
+    assert residual_bp == pytest.approx(1e-7, rel=1e-3)
+    assert len(failures) == 1
+    assert "Identity gate" in failures[0]
 
 
 # ---------------------------------------------------------------------------

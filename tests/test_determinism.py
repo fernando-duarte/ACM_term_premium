@@ -7,12 +7,12 @@ pipeline using only synthetic, in-memory data — no network calls.
 from __future__ import annotations
 
 import io
+import os
 import sys
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import pytest
 
 import reproduce_acm
 
@@ -38,14 +38,17 @@ class TestGoldenOutputRegression:
     def test_panel_matches_golden(self, nominal_acm_model):
         panel = self._build_panel(nominal_acm_model)
 
-        if not _GOLDEN_PATH.exists():
-            # First run: write the golden file and pass trivially.
+        if os.environ.get("REBUILD_GOLDEN") == "1":
+            # Deliberate, opt-in regeneration: rebuild the fixture, then fall
+            # through to the comparison so the rebuilt file is sanity-checked.
             _FIXTURES_DIR.mkdir(parents=True, exist_ok=True)
             panel.to_csv(_GOLDEN_PATH, float_format="%.12f")
-            pytest.skip(
-                f"Golden file created at {_GOLDEN_PATH} — "
-                "re-run tests to compare against it."
-            )
+
+        assert _GOLDEN_PATH.exists(), (
+            f"Golden file missing at {_GOLDEN_PATH}. It must be committed to the "
+            "repo; regenerate deliberately with REBUILD_GOLDEN=1 python -m pytest "
+            "tests/test_determinism.py and review the diff before committing."
+        )
 
         golden = pd.read_csv(_GOLDEN_PATH, index_col="DATE", parse_dates=True)
         # Align on common index/columns to be robust to row-count changes

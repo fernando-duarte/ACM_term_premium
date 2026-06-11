@@ -140,6 +140,9 @@ jobs:
 
       - name: Generate SHA256SUMS
         if: env.SHOULD_RELEASE == 'true'
+        # The manifest deliberately uses bare filenames: GitHub release assets
+        # are published flat, so `sha256sum -c SHA256SUMS` works from the
+        # directory where a user downloads all the assets.
         run: |
           (
             cd outputs
