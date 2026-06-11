@@ -23,10 +23,10 @@ from reproduce_acm import (
     maturity_suffix,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers shared across tests
 # ---------------------------------------------------------------------------
+
 
 def _make_date(date_str: str) -> pd.Timestamp:
     return pd.Timestamp(date_str)
@@ -55,10 +55,9 @@ def _clean_panel(dates: list[str]) -> pd.DataFrame:
 # Coverage helper: classify_tail_gap
 # ---------------------------------------------------------------------------
 
+
 def test_classify_tail_gap_splits_interior_from_tail():
     gsw_last = _make_date("2026-06-05")
-    interior_date = _make_date("2026-06-03")
-    tail_date = _make_date("2026-06-08")
     missing = _make_dti("2026-06-03", "2026-06-08")
 
     interior, tail = classify_tail_gap(missing, gsw_last)
@@ -72,6 +71,7 @@ def test_classify_tail_gap_splits_interior_from_tail():
 # ---------------------------------------------------------------------------
 # Coverage helper: check_coverage_gaps — interior hole must fail
 # ---------------------------------------------------------------------------
+
 
 def test_coverage_gap_interior_fails():
     gsw_last = _make_date("2026-06-05")
@@ -88,6 +88,7 @@ def test_coverage_gap_interior_fails():
 # ---------------------------------------------------------------------------
 # Coverage helper: tail gap within tolerance passes silently
 # ---------------------------------------------------------------------------
+
 
 def test_coverage_gap_tail_within_tolerance_passes():
     # gsw_last = 2026-06-05 (Thursday).
@@ -106,6 +107,7 @@ def test_coverage_gap_tail_within_tolerance_passes():
 # Coverage helper: tail gap beyond 15 bd must fail
 # ---------------------------------------------------------------------------
 
+
 def test_coverage_gap_tail_beyond_limit_fails():
     gsw_last = _make_date("2026-01-01")
     # 2026-03-01 is many business days after 2026-01-01 (well > 15 bd)
@@ -121,6 +123,7 @@ def test_coverage_gap_tail_beyond_limit_fails():
 # ---------------------------------------------------------------------------
 # Per-family gate: ACMY fine, ACMRNY rmse over limit → fail
 # ---------------------------------------------------------------------------
+
 
 def test_per_family_rny_rmse_exceeded_produces_failure():
     """A synthetic summary where ACMRNY rmse exceeds --max-rmse-bp should fail."""
@@ -138,6 +141,7 @@ def test_per_family_rny_rmse_exceeded_produces_failure():
     off["ACMRNY01"] = gen["ACMRNY01"] + 0.001
 
     from reproduce_acm import compare_panel
+
     monthly_summary, _ = compare_panel(gen, off)
 
     gsw_last = _make_date("2020-03-31")
@@ -148,11 +152,11 @@ def test_per_family_rny_rmse_exceeded_produces_failure():
             daily_summary=None,
             missing_monthly=pd.DatetimeIndex([]),
             missing_daily=pd.DatetimeIndex([]),
-            max_abs_diff_bp=0.5,    # generous — won't trip
+            max_abs_diff_bp=0.5,  # generous — won't trip
             gsw_last=gsw_last,
             max_tail_gap_bd=5,
             acmy_max_abs_diff_bp=1e-4,
-            max_rmse_bp=0.005,      # 0.1 bp rmse > 0.005 → should fail
+            max_rmse_bp=0.005,  # 0.1 bp rmse > 0.005 → should fail
             max_bias_bp=0.001,
             generated_monthly=gen,
             generated_daily=None,
@@ -165,6 +169,7 @@ def test_per_family_rny_rmse_exceeded_produces_failure():
 # Per-family gate: all within limits → pass
 # ---------------------------------------------------------------------------
 
+
 def test_per_family_all_within_limits_passes():
     from reproduce_acm import assert_official_reproduced
 
@@ -175,6 +180,7 @@ def test_per_family_all_within_limits_passes():
     off["ACMRNY01"] = gen["ACMRNY01"] + 1e-7
 
     from reproduce_acm import compare_panel
+
     monthly_summary, _ = compare_panel(gen, off)
 
     gsw_last = _make_date("2020-03-31")
@@ -199,6 +205,7 @@ def test_per_family_all_within_limits_passes():
 # Bias gate: RNY with signed_mean exceeding --max-bias-bp → fail
 # ---------------------------------------------------------------------------
 
+
 def test_bias_gate_detects_dense_systematic_offset():
     """A column where max/rmse are within limits but |signed_mean| is too large.
 
@@ -222,6 +229,7 @@ def test_bias_gate_detects_dense_systematic_offset():
     off["ACMRNY01"] = gen["ACMRNY01"] + 0.0002
 
     from reproduce_acm import compare_panel
+
     monthly_summary, _ = compare_panel(gen, off)
 
     gsw_last = dates[-1]
@@ -236,8 +244,8 @@ def test_bias_gate_detects_dense_systematic_offset():
             gsw_last=gsw_last,
             max_tail_gap_bd=5,
             acmy_max_abs_diff_bp=1e-4,
-            max_rmse_bp=0.1,        # generous — rmse passes
-            max_bias_bp=0.001,      # |signed_mean| = 0.02 bp > 0.001 → fail
+            max_rmse_bp=0.1,  # generous — rmse passes
+            max_bias_bp=0.001,  # |signed_mean| = 0.02 bp > 0.001 → fail
             generated_monthly=gen,
             generated_daily=None,
         )
@@ -248,6 +256,7 @@ def test_bias_gate_detects_dense_systematic_offset():
 # ---------------------------------------------------------------------------
 # Identity gate: ACMY ≠ ACMRNY + ACMTP → fail
 # ---------------------------------------------------------------------------
+
 
 def test_identity_gate_detects_violation():
     dates = ["2020-01-31", "2020-02-28"]
@@ -266,6 +275,7 @@ def test_identity_gate_detects_violation():
 # Identity gate: ACMY == ACMRNY + ACMTP → pass
 # ---------------------------------------------------------------------------
 
+
 def test_identity_gate_passes_when_satisfied():
     dates = ["2020-01-31", "2020-02-28"]
     panel = _clean_panel(dates)  # built with identity satisfied
@@ -279,6 +289,7 @@ def test_identity_gate_passes_when_satisfied():
 # ---------------------------------------------------------------------------
 # Identity gate: residual is measured in basis points, not panel units
 # ---------------------------------------------------------------------------
+
 
 def test_identity_gate_residual_is_in_basis_points():
     dates = ["2020-01-31", "2020-02-28"]
@@ -300,6 +311,7 @@ def test_identity_gate_residual_is_in_basis_points():
 # Schema gate: panel with a NaN value → fail
 # ---------------------------------------------------------------------------
 
+
 def test_schema_gate_detects_nan():
     dates = ["2020-01-31", "2020-02-28"]
     panel = _clean_panel(dates)
@@ -315,6 +327,7 @@ def test_schema_gate_detects_nan():
 # Schema gate: panel with a missing expected column → fail
 # ---------------------------------------------------------------------------
 
+
 def test_schema_gate_detects_missing_column():
     dates = ["2020-01-31", "2020-02-28"]
     panel = _clean_panel(dates)
@@ -329,6 +342,7 @@ def test_schema_gate_detects_missing_column():
 # ---------------------------------------------------------------------------
 # Schema gate: panel with duplicate dates → fail
 # ---------------------------------------------------------------------------
+
 
 def test_schema_gate_detects_duplicate_dates():
     dates = ["2020-01-31", "2020-01-31", "2020-02-28"]
@@ -346,6 +360,7 @@ def test_schema_gate_detects_duplicate_dates():
 # ---------------------------------------------------------------------------
 # Schema gate: clean panel passes all schema checks
 # ---------------------------------------------------------------------------
+
 
 def test_schema_gate_passes_on_clean_panel():
     dates = ["2020-01-31", "2020-02-28", "2020-03-31"]

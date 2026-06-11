@@ -4,6 +4,7 @@ Gate-1 (offline): these tests detect any change in the model's numerical
 output relative to a committed golden CSV, and exercise the main() CLI
 pipeline using only synthetic, in-memory data — no network calls.
 """
+
 from __future__ import annotations
 
 import io
@@ -27,6 +28,7 @@ _GOLDEN_PATH = _FIXTURES_DIR / "golden_synthetic_panel.csv"
 # ===========================================================================
 # Golden-output regression
 # ===========================================================================
+
 
 class TestGoldenOutputRegression:
     """Panel output must match the committed golden CSV to < 1e-9."""
@@ -58,8 +60,7 @@ class TestGoldenOutputRegression:
         assert len(common_cols) > 0, "No overlapping columns between panel and golden"
 
         diff = (
-            panel.loc[common_idx, common_cols].values
-            - golden.loc[common_idx, common_cols].values
+            panel.loc[common_idx, common_cols].values - golden.loc[common_idx, common_cols].values
         )
         max_diff = float(np.abs(diff).max())
         assert max_diff < 1e-9, (
@@ -70,9 +71,7 @@ class TestGoldenOutputRegression:
     def test_expanded_monthly_panel_matches_golden(self, nominal_acm_model):
         """Spot-check expanded panel against golden: check a few columns round-trip."""
         model = nominal_acm_model
-        panel = reproduce_acm.expanded_monthly_panel(
-            model.miy_m, model.tp_m, model.rny_m
-        )
+        panel = reproduce_acm.expanded_monthly_panel(model.miy_m, model.tp_m, model.rny_m)
         # Verify self-consistency: saving then re-loading gives same values
         buf = io.StringIO()
         panel.to_csv(buf, float_format="%.12f")
@@ -85,6 +84,7 @@ class TestGoldenOutputRegression:
 # ===========================================================================
 # End-to-end main() pipeline test (offline, uses tmp_path)
 # ===========================================================================
+
 
 class TestMainEndToEnd:
     """Exercise reproduce_acm.main() from scratch with synthetic local files."""
@@ -152,8 +152,10 @@ class TestMainEndToEnd:
         try:
             sys.argv = [
                 "reproduce_acm",
-                "--cache-dir", str(cache_dir),
-                "--output", str(output_path),
+                "--cache-dir",
+                str(cache_dir),
+                "--output",
+                str(output_path),
             ]
             # main() calls load_gsw_curve and load_fedfunds which call
             # read_or_download; since the cache files exist they will be read
@@ -194,8 +196,10 @@ class TestMainEndToEnd:
         try:
             sys.argv = [
                 "reproduce_acm",
-                "--cache-dir", str(cache_dir),
-                "--output", str(output_path),
+                "--cache-dir",
+                str(cache_dir),
+                "--output",
+                str(output_path),
             ]
             with np.errstate(over="ignore", divide="ignore", invalid="ignore"):
                 reproduce_acm.main()

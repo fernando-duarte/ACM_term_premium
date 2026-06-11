@@ -3,14 +3,13 @@ from __future__ import annotations
 import argparse
 import io
 import json
-from pathlib import Path
 import time
 import urllib.parse
 import urllib.request
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
-
 
 DATE_COLUMN = "DATE"
 MONTHLY_SHEET = "ACM Monthly"
@@ -22,8 +21,7 @@ DEFAULT_UPDATE_OUTPUT = Path("outputs/ACMTermPremium_updated.xlsx")
 DEFAULT_CACHE_DIR = Path("data_cache")
 
 OFFICIAL_ACM_URL = (
-    "https://www.newyorkfed.org/medialibrary/media/research/data_indicators/"
-    "ACMTermPremium.xls"
+    "https://www.newyorkfed.org/medialibrary/media/research/data_indicators/ACMTermPremium.xls"
 )
 GSW_URL = "https://www.federalreserve.gov/data/yield-curve-tables/feds200628.csv"
 FEDFUNDS_URL = "https://fred.stlouisfed.org/graph/fredgraph.csv?id=FEDFUNDS"
@@ -157,10 +155,7 @@ def parse_fedfunds(raw: bytes) -> pd.Series:
         raise ValueError("Unrecognized FEDFUNDS CSV format.")
 
     fedfunds = (
-        data.set_index(DATE_COLUMN)[value_col]
-        .replace([".", "ND"], np.nan)
-        .dropna()
-        .astype(float)
+        data.set_index(DATE_COLUMN)[value_col].replace([".", "ND"], np.nan).dropna().astype(float)
         / 100.0
     )
     fedfunds.name = "FEDFUNDS"
@@ -590,14 +585,16 @@ def check_identity_gate(
         col_y = f"ACMY{suffix}"
         col_rny = f"ACMRNY{suffix}"
         col_tp = f"ACMTP{suffix}"
-        if col_y not in panel.columns or col_rny not in panel.columns or col_tp not in panel.columns:
+        if (
+            col_y not in panel.columns
+            or col_rny not in panel.columns
+            or col_tp not in panel.columns
+        ):
             failures.append(
                 f"Identity gate ({label}): columns {col_y}, {col_rny}, or {col_tp} missing."
             )
             return float("nan")
-        residual_bp = float(
-            (panel[col_y] - panel[col_rny] - panel[col_tp]).abs().max()
-        ) * 100.0
+        residual_bp = float((panel[col_y] - panel[col_rny] - panel[col_tp]).abs().max()) * 100.0
         if residual_bp > max_residual:
             max_residual = residual_bp
 
@@ -983,8 +980,7 @@ def main() -> None:
     official_source = args.official
     exact_mode = official_source is not None
     output_path = Path(
-        args.output
-        or (DEFAULT_REPRODUCTION_OUTPUT if exact_mode else DEFAULT_UPDATE_OUTPUT)
+        args.output or (DEFAULT_REPRODUCTION_OUTPUT if exact_mode else DEFAULT_UPDATE_OUTPUT)
     )
     expanded_monthly_output_path = output_path.with_name(
         f"{output_path.stem}_monthly_6m_120m{output_path.suffix}"
@@ -1128,13 +1124,9 @@ def main() -> None:
     print(f"Wrote expanded monthly CSV: {expanded_monthly_csv_path}")
     print(f"Wrote expanded monthly CSV gzip: {expanded_monthly_csv_gz_path}")
     monthly_range = (
-        f"{generated_monthly.index.min().date()} to "
-        f"{generated_monthly.index.max().date()}"
+        f"{generated_monthly.index.min().date()} to {generated_monthly.index.max().date()}"
     )
-    daily_range = (
-        f"{generated_daily.index.min().date()} to "
-        f"{generated_daily.index.max().date()}"
-    )
+    daily_range = f"{generated_daily.index.min().date()} to {generated_daily.index.max().date()}"
     print(f"Monthly rows: {len(generated_monthly)} ({monthly_range})")
     print(f"Daily rows: {len(generated_daily)} ({daily_range})")
     if exact_mode:

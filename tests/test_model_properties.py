@@ -3,18 +3,18 @@
 These tests verify mathematical identities and sanity checks on the model
 output; they do not compare to live market data, so they are fully offline.
 """
+
 from __future__ import annotations
 
 import numpy as np
 import pandas as pd
-import pytest
 
 import reproduce_acm
-
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _max_abs(a: pd.DataFrame, b: pd.DataFrame) -> float:
     return float((a - b).abs().max().max())
@@ -23,6 +23,7 @@ def _max_abs(a: pd.DataFrame, b: pd.DataFrame) -> float:
 # ===========================================================================
 # Identity: model implied yield = risk-neutral yield + term premium
 # ===========================================================================
+
 
 class TestDecompositionIdentity:
     """miy ≡ rny + tp must hold everywhere (monthly and daily) to < 1e-9."""
@@ -42,6 +43,7 @@ class TestDecompositionIdentity:
 # Risk-neutral coefficients: zero prices of risk reproduce a_rn / b_rn
 # ===========================================================================
 
+
 class TestRiskNeutralCoefficients:
     """affine_coefficients with λ₀=0 / λ₁=0 must reproduce (a_rn, b_rn)."""
 
@@ -52,12 +54,10 @@ class TestRiskNeutralCoefficients:
             np.zeros_like(model.lambda1),
         )
         np.testing.assert_allclose(
-            a_check, model.a_rn, atol=1e-12,
-            err_msg="a: zero λ should reproduce a_rn"
+            a_check, model.a_rn, atol=1e-12, err_msg="a: zero λ should reproduce a_rn"
         )
         np.testing.assert_allclose(
-            b_check, model.b_rn, atol=1e-12,
-            err_msg="b: zero λ should reproduce b_rn"
+            b_check, model.b_rn, atol=1e-12, err_msg="b: zero λ should reproduce b_rn"
         )
 
     def test_zero_risk_prices_imply_zero_term_premium(self, nominal_acm_model):
@@ -79,6 +79,7 @@ class TestRiskNeutralCoefficients:
 # Short-rate fit: fitted 1-month yield ≈ input 1-month yield
 # ===========================================================================
 
+
 class TestShortRateFit:
     """The model's fitted 1-month yield should track the input 1M yield closely."""
 
@@ -93,12 +94,13 @@ class TestShortRateFit:
         corr = float(np.corrcoef(y1_input, y1_fitted)[0, 1])
         mean_err = float(np.mean(np.abs(y1_input - y1_fitted)))
         assert corr > 0.90, f"1M yield correlation {corr:.4f} too low"
-        assert mean_err < 0.005, f"1M yield mean abs error {mean_err*100:.2f} bp too large"
+        assert mean_err < 0.005, f"1M yield mean abs error {mean_err * 100:.2f} bp too large"
 
 
 # ===========================================================================
 # Determinism and sanity checks
 # ===========================================================================
+
 
 class TestDeterminismAndSanity:
     """Building the model twice on identical inputs gives identical outputs."""
@@ -107,12 +109,9 @@ class TestDeterminismAndSanity:
         model = nominal_acm_model
         for attr in ("miy_m", "rny_m", "tp_m", "miy_d", "rny_d", "tp_d"):
             frame = getattr(model, attr)
-            assert np.isfinite(frame.values).all(), \
-                f"{attr} contains non-finite values"
+            assert np.isfinite(frame.values).all(), f"{attr} contains non-finite values"
 
-    def test_model_is_deterministic_on_rerun(
-        self, synthetic_curve_daily, synthetic_curve_monthly
-    ):
+    def test_model_is_deterministic_on_rerun(self, synthetic_curve_daily, synthetic_curve_monthly):
         """Constructing NominalACM twice from identical inputs gives bit-identical results."""
         with np.errstate(over="ignore", divide="ignore", invalid="ignore"):
             m1 = reproduce_acm.NominalACM(

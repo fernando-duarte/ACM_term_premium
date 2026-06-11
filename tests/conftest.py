@@ -3,6 +3,7 @@
 All fixtures produce synthetic, fully deterministic data (seeded with
 np.random.default_rng(0)).  No network I/O is performed here.
 """
+
 from __future__ import annotations
 
 import sys
@@ -22,13 +23,14 @@ import reproduce_acm  # noqa: E402
 # ---------------------------------------------------------------------------
 
 _RNG_SEED = 0
-_N_MONTHS = 300          # ≈ 25 years of monthly observations
+_N_MONTHS = 300  # ≈ 25 years of monthly observations
 _N_DAILY_PER_MONTH = 21  # approximate business days per month; keep it simple
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_month_ends(n: int, start: str = "1995-01-31") -> pd.DatetimeIndex:
     """Return *n* month-end timestamps starting from *start*."""
@@ -43,10 +45,10 @@ def _make_nss_params(rng: np.random.Generator, n: int) -> pd.DataFrame:
     always realistic and well-conditioned.
     """
     # Start from plausible US-treasury-like values (rates in %).
-    beta0 = np.cumsum(rng.normal(0, 0.01, n)) + 5.0    # long-run level
-    beta1 = np.cumsum(rng.normal(0, 0.01, n)) - 2.0    # slope
-    beta2 = np.cumsum(rng.normal(0, 0.02, n)) + 1.0    # curvature
-    beta3 = np.cumsum(rng.normal(0, 0.02, n)) + 0.5    # 2nd curvature
+    beta0 = np.cumsum(rng.normal(0, 0.01, n)) + 5.0  # long-run level
+    beta1 = np.cumsum(rng.normal(0, 0.01, n)) - 2.0  # slope
+    beta2 = np.cumsum(rng.normal(0, 0.02, n)) + 1.0  # curvature
+    beta3 = np.cumsum(rng.normal(0, 0.02, n)) + 0.5  # 2nd curvature
     tau1 = np.clip(np.cumsum(rng.normal(0, 0.01, n)) + 1.5, 0.5, 5.0)
     tau2 = np.clip(np.cumsum(rng.normal(0, 0.01, n)) + 5.0, 2.0, 15.0)
 
@@ -65,6 +67,7 @@ def _make_nss_params(rng: np.random.Generator, n: int) -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 # Module-scoped fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture(scope="module")
 def rng() -> np.random.Generator:
@@ -106,9 +109,7 @@ def tau_years_all() -> np.ndarray:
 
 
 @pytest.fixture(scope="session")
-def synthetic_curve_monthly(
-    synthetic_nss_params_monthly, tau_years_all
-) -> pd.DataFrame:
+def synthetic_curve_monthly(synthetic_nss_params_monthly, tau_years_all) -> pd.DataFrame:
     """Monthly yield curve (120 columns, month-end index) in decimal form."""
     values = reproduce_acm.nss_curve_matrix(tau_years_all, synthetic_nss_params_monthly)
     curve = pd.DataFrame(
@@ -121,9 +122,7 @@ def synthetic_curve_monthly(
 
 
 @pytest.fixture(scope="session")
-def synthetic_curve_daily(
-    synthetic_nss_params_daily, tau_years_all
-) -> pd.DataFrame:
+def synthetic_curve_daily(synthetic_nss_params_daily, tau_years_all) -> pd.DataFrame:
     """Daily yield curve (120 columns, business-day index) in decimal form."""
     values = reproduce_acm.nss_curve_matrix(tau_years_all, synthetic_nss_params_daily)
     curve = pd.DataFrame(
@@ -148,9 +147,7 @@ def synthetic_fedfunds(synthetic_curve_monthly) -> pd.Series:
 
 
 @pytest.fixture(scope="session")
-def nominal_acm_model(
-    synthetic_curve_daily, synthetic_curve_monthly
-) -> reproduce_acm.NominalACM:
+def nominal_acm_model(synthetic_curve_daily, synthetic_curve_monthly) -> reproduce_acm.NominalACM:
     """A fully-estimated NominalACM model on the synthetic curves."""
     with np.errstate(over="ignore", divide="ignore", invalid="ignore"):
         model = reproduce_acm.NominalACM(

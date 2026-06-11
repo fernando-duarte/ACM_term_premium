@@ -3,9 +3,8 @@
 All tests are fully offline — no network calls, no disk writes outside
 pytest's tmp_path.
 """
-from __future__ import annotations
 
-import io
+from __future__ import annotations
 
 import numpy as np
 import pandas as pd
@@ -13,18 +12,17 @@ import pytest
 
 import reproduce_acm
 
-
 # ===========================================================================
 # nss_curve_matrix
 # ===========================================================================
+
 
 class TestNssCurveMatrix:
     """Tests for the Nelson-Siegel-Svensson vectorised yield computation."""
 
     def _single_row_params(self, b0, b1, b2, b3, t1, t2) -> pd.DataFrame:
         return pd.DataFrame(
-            {"BETA0": [b0], "BETA1": [b1], "BETA2": [b2],
-             "BETA3": [b3], "TAU1": [t1], "TAU2": [t2]}
+            {"BETA0": [b0], "BETA1": [b1], "BETA2": [b2], "BETA3": [b3], "TAU1": [t1], "TAU2": [t2]}
         )
 
     def _nss_closed_form(self, tau_yr, b0, b1, b2, b3, t1, t2) -> float:
@@ -57,8 +55,9 @@ class TestNssCurveMatrix:
         tau_yrs = np.array([1.0, 2.0, 5.0, 10.0])
         params = self._single_row_params(b0, 0.0, 0.0, 0.0, 1.5, 6.0)
         result = reproduce_acm.nss_curve_matrix(tau_yrs, params)
-        np.testing.assert_allclose(result[0], b0, atol=1e-12,
-                                   err_msg="Flat curve: all yields should equal BETA0")
+        np.testing.assert_allclose(
+            result[0], b0, atol=1e-12, err_msg="Flat curve: all yields should equal BETA0"
+        )
 
     def test_nan_tau2_uses_three_factor_form(self):
         """Rows with NaN tau2 should fall back to Nelson-Siegel (no beta3 term)."""
@@ -68,8 +67,9 @@ class TestNssCurveMatrix:
         params_ref = self._single_row_params(b0, b1, b2, 0.0, t1, np.nan)
         result_nan = reproduce_acm.nss_curve_matrix(tau_yrs, params_nan)
         result_ref = reproduce_acm.nss_curve_matrix(tau_yrs, params_ref)
-        np.testing.assert_allclose(result_nan, result_ref, atol=1e-12,
-                                   err_msg="NaN tau2: beta3 term should be suppressed")
+        np.testing.assert_allclose(
+            result_nan, result_ref, atol=1e-12, err_msg="NaN tau2: beta3 term should be suppressed"
+        )
 
     def test_zero_tau2_uses_three_factor_form(self):
         """Rows with tau2 ≤ 0 should fall back to three-factor Nelson-Siegel."""
@@ -79,28 +79,27 @@ class TestNssCurveMatrix:
         params_ref = self._single_row_params(b0, b1, b2, 0.0, t1, np.nan)
         result_zero = reproduce_acm.nss_curve_matrix(tau_yrs, params_zero)
         result_ref = reproduce_acm.nss_curve_matrix(tau_yrs, params_ref)
-        np.testing.assert_allclose(result_zero, result_ref, atol=1e-12,
-                                   err_msg="tau2=0: beta3 term should be suppressed")
+        np.testing.assert_allclose(
+            result_zero, result_ref, atol=1e-12, err_msg="tau2=0: beta3 term should be suppressed"
+        )
 
     def test_vectorised_equals_row_by_row(self, synthetic_nss_params_monthly, tau_years_all):
         """Matrix output equals stacking single-row calls (first 10 rows for speed)."""
         params_sub = synthetic_nss_params_monthly.iloc[:10]
         batch_result = reproduce_acm.nss_curve_matrix(tau_years_all, params_sub)
         for i in range(len(params_sub)):
-            single = reproduce_acm.nss_curve_matrix(
-                tau_years_all, params_sub.iloc[[i]]
-            )
+            single = reproduce_acm.nss_curve_matrix(tau_years_all, params_sub.iloc[[i]])
             np.testing.assert_allclose(
-                batch_result[i], single[0], atol=1e-14,
-                err_msg=f"Row {i}: vectorised != single-row"
+                batch_result[i], single[0], atol=1e-14, err_msg=f"Row {i}: vectorised != single-row"
             )
 
     def test_output_shape(self):
         """Output shape is (n_dates, n_maturities)."""
         n_dates, n_mats = 7, 12
         tau_yrs = np.linspace(1 / 12, 1.0, n_mats)
-        rows = [{"BETA0": 5.0, "BETA1": -1.0, "BETA2": 0.3,
-                 "BETA3": 0.2, "TAU1": 1.5, "TAU2": 6.0}] * n_dates
+        rows = [
+            {"BETA0": 5.0, "BETA1": -1.0, "BETA2": 0.3, "BETA3": 0.2, "TAU1": 1.5, "TAU2": 6.0}
+        ] * n_dates
         params = pd.DataFrame(rows)
         result = reproduce_acm.nss_curve_matrix(tau_yrs, params)
         assert result.shape == (n_dates, n_mats)
@@ -109,6 +108,7 @@ class TestNssCurveMatrix:
 # ===========================================================================
 # gsw_header_offset
 # ===========================================================================
+
 
 class TestGswHeaderOffset:
     """Tests for locating the 'Date,' header row in raw GSW CSV bytes."""
@@ -140,6 +140,7 @@ class TestGswHeaderOffset:
 # ===========================================================================
 # parse_fedfunds
 # ===========================================================================
+
 
 class TestParseFedFunds:
     """Tests for both FRED and H.15 package CSV formats."""
@@ -236,6 +237,7 @@ class TestParseFedFunds:
 # get_excess_returns
 # ===========================================================================
 
+
 class TestGetExcessReturns:
     """Tests for the excess return calculation."""
 
@@ -249,8 +251,7 @@ class TestGetExcessReturns:
         noise = rng.normal(0, 0.001, (n_rows, 120))
         values = base[None, :] + noise
         values = np.clip(values, 1e-4, None)
-        curve = pd.DataFrame(values, index=dates,
-                             columns=reproduce_acm.ALL_MATURITIES)
+        curve = pd.DataFrame(values, index=dates, columns=reproduce_acm.ALL_MATURITIES)
         curve.index.name = "DATE"
         return curve
 
@@ -264,8 +265,7 @@ class TestGetExcessReturns:
         curve = self._minimal_curve(n_rows=20)
         rx = reproduce_acm.get_excess_returns(curve)
         # No all-NaN rows after the drop
-        assert not rx.isnull().all(axis=1).any(), \
-            "All-NaN rows should have been dropped"
+        assert not rx.isnull().all(axis=1).any(), "All-NaN rows should have been dropped"
 
     def test_columns_span_all_maturities(self):
         rx = reproduce_acm.get_excess_returns(self._minimal_curve())
@@ -284,14 +284,17 @@ class TestGetExcessReturns:
         # Exclude column 1 (pinned to 0) and check non-NaN entries ≈ 0
         non_first = rx.drop(columns=[1]).dropna(how="all")
         np.testing.assert_allclose(
-            non_first.values, 0.0, atol=1e-10,
-            err_msg="Flat constant curve: excess returns should be ≈ 0"
+            non_first.values,
+            0.0,
+            atol=1e-10,
+            err_msg="Flat constant curve: excess returns should be ≈ 0",
         )
 
 
 # ===========================================================================
 # maturity_suffix
 # ===========================================================================
+
 
 class TestMaturitySuffix:
     """Tests for the maturity label formatter."""
@@ -324,6 +327,7 @@ class TestMaturitySuffix:
 # completed_monthly_dates
 # ===========================================================================
 
+
 class TestCompletedMonthlyDates:
     """Tests for selecting completed (vs. partial) months from a daily curve."""
 
@@ -339,9 +343,7 @@ class TestCompletedMonthlyDates:
         # Build a daily index that ends on the 15th of the last month.
         dates = pd.bdate_range("2020-01-02", "2020-03-15")
         curve = self._curve_for_index(dates)
-        result = reproduce_acm.completed_monthly_dates(
-            curve, include_partial_current_month=False
-        )
+        result = reproduce_acm.completed_monthly_dates(curve, include_partial_current_month=False)
         # Should include Jan and Feb month-ends only, not March
         periods = result.to_period("M")
         assert pd.Period("2020-03", "M") not in periods
@@ -351,9 +353,7 @@ class TestCompletedMonthlyDates:
         """include_partial_current_month=True includes the partial month."""
         dates = pd.bdate_range("2020-01-02", "2020-03-15")
         curve = self._curve_for_index(dates)
-        result = reproduce_acm.completed_monthly_dates(
-            curve, include_partial_current_month=True
-        )
+        result = reproduce_acm.completed_monthly_dates(curve, include_partial_current_month=True)
         periods = result.to_period("M")
         assert pd.Period("2020-03", "M") in periods
 
@@ -362,24 +362,21 @@ class TestCompletedMonthlyDates:
         # 2020-01-31 is a Friday — last business day of January 2020.
         dates = pd.bdate_range("2020-01-02", "2020-01-31")
         curve = self._curve_for_index(dates)
-        result = reproduce_acm.completed_monthly_dates(
-            curve, include_partial_current_month=False
-        )
+        result = reproduce_acm.completed_monthly_dates(curve, include_partial_current_month=False)
         periods = result.to_period("M")
         assert pd.Period("2020-01", "M") in periods
 
     def test_empty_curve_returns_empty(self):
         empty_idx = pd.DatetimeIndex([], name="DATE")
         curve = pd.DataFrame({"val": []}, index=empty_idx)
-        result = reproduce_acm.completed_monthly_dates(
-            curve, include_partial_current_month=False
-        )
+        result = reproduce_acm.completed_monthly_dates(curve, include_partial_current_month=False)
         assert len(result) == 0
 
 
 # ===========================================================================
 # smooth_pre_1982_one_month_rate
 # ===========================================================================
+
 
 class TestSmoothPre1982OneMonthRate:
     """Tests for the FEDFUNDS-based smoothing of the 1M GSW yield pre-1982."""
@@ -411,7 +408,8 @@ class TestSmoothPre1982OneMonthRate:
         mats = reproduce_acm.ALL_MATURITIES
         n = len(all_dates)
         other_yields = (
-            0.04 + 0.001 * np.arange(len(mats) - 1)[None, :]
+            0.04
+            + 0.001 * np.arange(len(mats) - 1)[None, :]
             + rng.normal(0, 0.0001, (n, len(mats) - 1))
         )
         data = np.column_stack([all_1m, other_yields])
@@ -426,10 +424,10 @@ class TestSmoothPre1982OneMonthRate:
         rng = np.random.default_rng(7)
         curve_m, fedfunds, true_intercept, true_slope = self._build_inputs(rng)
         _, beta, _, _ = reproduce_acm.smooth_pre_1982_one_month_rate(curve_m, fedfunds)
-        assert abs(beta[0] - true_intercept) < 0.005, \
+        assert abs(beta[0] - true_intercept) < 0.005, (
             f"Intercept {beta[0]:.6f} far from truth {true_intercept}"
-        assert abs(beta[1] - true_slope) < 0.1, \
-            f"Slope {beta[1]:.6f} far from truth {true_slope}"
+        )
+        assert abs(beta[1] - true_slope) < 0.1, f"Slope {beta[1]:.6f} far from truth {true_slope}"
 
     def test_only_pre_1982_column_1_changed(self):
         """Smoothing modifies only column 1, and only for pre-1982 dates."""
@@ -443,14 +441,13 @@ class TestSmoothPre1982OneMonthRate:
 
         # Post-1982 column 1: unchanged
         pd.testing.assert_series_equal(
-            out.loc[post_mask, 1], curve_m.loc[post_mask, 1],
+            out.loc[post_mask, 1],
+            curve_m.loc[post_mask, 1],
             check_names=False,
         )
         # Columns 2..120: entirely unchanged everywhere
         for col in reproduce_acm.ALL_MATURITIES[1:]:
-            pd.testing.assert_series_equal(
-                out[col], curve_m[col], check_names=False
-            )
+            pd.testing.assert_series_equal(out[col], curve_m[col], check_names=False)
         # Pre-1982 column 1: values are now different from original
         changed = (out.loc[pre_mask, 1] != curve_m.loc[pre_mask, 1]).any()
         assert changed, "Pre-1982 column 1 should have been modified"
