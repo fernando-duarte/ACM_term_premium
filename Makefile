@@ -4,7 +4,7 @@ REPRO_OUTPUT ?= outputs/ACMTermPremium_reproduced.xlsx
 UPDATE_OUTPUT ?= outputs/ACMTermPremium_updated.xlsx
 MAX_ABS_DIFF_BP ?= 0.01
 
-.PHONY: reproduce update verify clean distclean
+.PHONY: reproduce update verify lint format clean distclean
 
 reproduce:
 	$(PYTHON) reproduce_acm.py --official "$(OFFICIAL)" --output "$(REPRO_OUTPUT)"
@@ -14,6 +14,13 @@ update:
 
 verify:
 	$(PYTHON) reproduce_acm.py --official "$(OFFICIAL)" --output "$(REPRO_OUTPUT)" --assert-official-reproduced --max-abs-diff-bp $(MAX_ABS_DIFF_BP)
+
+lint:
+	$(PYTHON) -m pre_commit run --all-files
+
+format:
+	$(PYTHON) -m ruff check --fix .
+	$(PYTHON) -m ruff format .
 
 clean:
 	rm -rf outputs data_cache __pycache__
