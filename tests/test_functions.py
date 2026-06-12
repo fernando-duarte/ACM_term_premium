@@ -459,3 +459,73 @@ class TestSmoothPre1982OneMonthRate:
         _, _, n_fit, n_replace = reproduce_acm.smooth_pre_1982_one_month_rate(curve_m, fedfunds)
         assert n_fit > 0
         assert n_replace > 0
+
+
+# ===========================================================================
+# read_or_download
+# ===========================================================================
+
+
+class TestReadOrDownload:
+    def test_download_writes_cache_atomically(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(reproduce_acm, "fetch_url", lambda url: b"payload")
+        cache_path = tmp_path / "cache.csv"
+        data = reproduce_acm.read_or_download(
+            "https://example.com/x.csv", cache_path, refresh=False
+        )
+        assert data == b"payload"
+        assert cache_path.read_bytes() == b"payload"
+        leftovers = [p for p in tmp_path.iterdir() if p != cache_path]
+        assert leftovers == []
+
+    def test_cache_hit_skips_download(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(
+            reproduce_acm, "fetch_url", lambda url: pytest.fail("must not download on cache hit")
+        )
+        cache_path = tmp_path / "cache.csv"
+        cache_path.write_bytes(b"cached")
+        data = reproduce_acm.read_or_download(
+            "https://example.com/x.csv", cache_path, refresh=False
+        )
+        assert data == b"cached"
+
+
+# ===========================================================================
+# load_fedfunds stale-cache fallback
+# ===========================================================================
+
+
+class TestLoadFedfundsFallback:
+    def test_refresh_parse_failure_falls_back_to_prior_cache(self, tmp_path, monkeypatch):
+        good_csv = b"observation_date,FEDFUNDS\n2020-01-01,1.55\n2020-02-01,1.58\n"
+        cache_path = tmp_path / "H15_FEDFUNDS_monthly.csv"
+        cache_path.write_bytes(good_csv)
+        # Fresh download succeeds at the HTTP layer but is unparseable.
+        monkeypatch.setattr(reproduce_acm, "fetch_url", lambda url: b"<html>maintenance</html>")
+
+        fedfunds, used_path, source = reproduce_acm.load_fedfunds(tmp_path, refresh=True)
+
+        assert "stale cache fallback" in source
+        assert used_path == cache_path
+        assert len(fedfunds) == 2
+        assert fedfunds.iloc[0] == 1.55 / 100.0
+        # The refresh wrote the broken payload to disk; the fallback must
+        # restore the last good copy or the next run starts from poison.
+        assert cache_path.read_bytes() == good_csv
+
+
+# ===========================================================================
+# ensure_finite
+# ===========================================================================
+
+
+class TestEnsureFinite:
+    def test_passes_on_finite_frame(self):
+        frame = pd.DataFrame({"a": [1.0, 2.0]})
+        reproduce_acm.ensure_finite("panel", frame)
+
+    @pytest.mark.parametrize("bad_value", [np.nan, np.inf, -np.inf])
+    def test_raises_on_non_finite(self, bad_value):
+        frame = pd.DataFrame({"a": [1.0, bad_value]})
+        with pytest.raises(ValueError, match="panel"):
+            reproduce_acm.ensure_finite("panel", frame)

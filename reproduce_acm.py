@@ -3,6 +3,8 @@ from __future__ import annotations
 import argparse
 import io
 import json
+import os
+import platform
 import time
 import urllib.parse
 import urllib.request
@@ -38,7 +40,8 @@ N_FACTORS = 5
 PC_MATURITIES = list(range(3, 121))
 SELECTED_RETURN_MATURITIES = [6, 12, 24, 36, 48, 60, 72, 84, 96, 108, 120]
 PUBLISHED_MATURITIES = list(range(12, 121, 12))
-EXPANDED_MONTHLY_MATURITIES = list(range(6, 121))
+EXPANDED_OUTPUT_MATURITIES = list(range(6, 121))
+EXPANDED_MONTHLY_MATURITIES = EXPANDED_OUTPUT_MATURITIES
 ALL_MATURITIES = list(range(1, 121))
 SMOOTHING_START = pd.Period("1982-01", freq="M")
 
@@ -61,16 +64,25 @@ def fetch_url(url: str) -> bytes:
     raise RuntimeError(f"Could not download {url}: {last_error!r}")
 
 
+def atomic_write_bytes(path: Path, data: bytes) -> None:
+    # Write-then-rename so an interrupted run never leaves a truncated file.
+    temp_path = path.with_suffix(path.suffix + ".tmp")
+    temp_path.write_bytes(data)
+    os.replace(temp_path, path)
+
+
 def read_or_download(url: str, cache_path: Path, refresh: bool) -> bytes:
     if cache_path.exists() and not refresh:
         data = cache_path.read_bytes()
         if data:
+            age_days = (time.time() - cache_path.stat().st_mtime) / 86400.0
+            print(f"Using cached {cache_path.name} ({age_days:.0f} days old; --refresh to update)")
             return data
         cache_path.unlink()
 
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     data = fetch_url(url)
-    cache_path.write_bytes(data)
+    atomic_write_bytes(cache_path, data)
     return data
 
 
@@ -170,15 +182,26 @@ def load_fedfunds(cache_dir: Path, refresh: bool) -> tuple[pd.Series, Path, str]
 
     errors = []
     for source_name, url, cache_path in sources:
+        # Snapshot the prior cache before a refresh can overwrite it, so a
+        # download that succeeds at the HTTP layer but fails to parse can
+        # still fall back to the last good copy. The fallback is deliberately
+        # low-stakes: FEDFUNDS only feeds the pre-1982 one-month-rate
+        # smoothing, so a slightly stale series cannot move current-period
+        # term premia.
+        stale = cache_path.read_bytes() if refresh and cache_path.exists() else b""
         try:
             raw = read_or_download(url, cache_path, refresh)
             return parse_fedfunds(raw), cache_path, url
         except Exception as exc:
             errors.append(f"{source_name}: {exc!r}")
-            if cache_path.exists() and refresh:
+            if stale:
                 try:
                     source = f"{url} (stale cache fallback)"
-                    return parse_fedfunds(cache_path.read_bytes()), cache_path, source
+                    fedfunds = parse_fedfunds(stale)
+                    # The failed refresh overwrote the cache; restore the last
+                    # good bytes so the next run does not start from poison.
+                    atomic_write_bytes(cache_path, stale)
+                    return fedfunds, cache_path, source
                 except Exception as cache_exc:
                     errors.append(f"{source_name} cache fallback: {cache_exc!r}")
 
@@ -345,9 +368,20 @@ class NominalACM:
         var_coeffs = x_lhs @ np.linalg.pinv(x_rhs)
         phi = var_coeffs[:, 1:]
 
+        # Reparametrization: the VAR intercept is folded into the residuals
+        # (v = u_OLS + mu_hat) instead of being carried separately. All model
+        # outputs (yields, risk-neutral yields, term premia) are identical to
+        # the textbook ACM estimator, but lambda0 and mu_star downstream are
+        # shifted by mu_hat relative to ACM's published parameters -- do not
+        # interpret them directly as the paper's prices of risk.
         mu = np.zeros((self.n_factors, 1))
         var_coeffs[:, [0]] = 0.0
         v = x_lhs - var_coeffs @ x_rhs
+        # np.cov demeans internally (ddof=1), so s0 equals the covariance of
+        # the true OLS residuals despite the folded-in intercept. The pricing
+        # error variance in excess_return_regression uses np.var (ddof=0);
+        # both enter only second-order convexity terms, and the mixed
+        # convention matches the published series.
         s0 = np.cov(v).reshape((-1, 1))
         return mu, phi, v, s0
 
@@ -445,12 +479,20 @@ def official_panel(miy: pd.DataFrame, tp: pd.DataFrame, rny: pd.DataFrame) -> pd
     return acm_panel(miy, tp, rny, PUBLISHED_MATURITIES)
 
 
+def expanded_acm_panel(
+    miy: pd.DataFrame,
+    tp: pd.DataFrame,
+    rny: pd.DataFrame,
+) -> pd.DataFrame:
+    return acm_panel(miy, tp, rny, EXPANDED_OUTPUT_MATURITIES)
+
+
 def expanded_monthly_panel(
     miy: pd.DataFrame,
     tp: pd.DataFrame,
     rny: pd.DataFrame,
 ) -> pd.DataFrame:
-    return acm_panel(miy, tp, rny, EXPANDED_MONTHLY_MATURITIES)
+    return expanded_acm_panel(miy, tp, rny)
 
 
 def _column_family(column: str) -> str:
@@ -752,8 +794,19 @@ def write_csv_outputs(
         )
 
 
+def ensure_finite(name: str, frame: pd.DataFrame) -> None:
+    finite = np.isfinite(frame.to_numpy())
+    if not finite.all():
+        row, col = np.argwhere(~finite)[0]
+        raise ValueError(
+            f"The {name} contains non-finite values (first at "
+            f"{frame.index[row]}, column {frame.columns[col]}); "
+            "refusing to write outputs."
+        )
+
+
 def metadata_frame(items: list[tuple[str, object]]) -> pd.DataFrame:
-    return pd.DataFrame([(key, value) for key, value in items], columns=["setting", "value"])
+    return pd.DataFrame(items, columns=["setting", "value"])
 
 
 def assert_official_reproduced(
@@ -990,6 +1043,8 @@ def main() -> None:
     )
     expanded_monthly_csv_path = expanded_monthly_output_path.with_suffix(".csv")
     expanded_monthly_csv_gz_path = expanded_monthly_csv_path.with_suffix(".csv.gz")
+    expanded_daily_csv_path = output_path.with_name(f"{output_path.stem}_daily_6m_120m.csv")
+    expanded_daily_csv_gz_path = expanded_daily_csv_path.with_suffix(".csv.gz")
     diagnostics_dir = output_path.with_suffix("")
 
     curve_d_all, gsw_cache = load_gsw_curve(cache_dir, args.refresh)
@@ -1038,8 +1093,10 @@ def main() -> None:
 
     # numpy 2.x on Apple's Accelerate BLAS raises spurious floating-point
     # warnings ("divide by zero / invalid value / overflow encountered in
-    # matmul") on well-conditioned matrix products. Scope the suppression to
-    # the linear-algebra core so genuine numerical issues elsewhere still surface.
+    # matmul") on well-conditioned matrix products. The matmuls are spread
+    # across the whole estimation, so the suppression has to cover it all;
+    # ensure_finite() below catches any genuine non-finite result before
+    # outputs are written.
     with np.errstate(over="ignore", divide="ignore", invalid="ignore"):
         curve_m, smoothing_beta, smoothing_fit_months, smoothed_months = (
             smooth_pre_1982_one_month_rate(curve_m_raw, fedfunds)
@@ -1052,12 +1109,25 @@ def main() -> None:
         )
 
     generated_monthly = official_panel(model.miy_m, model.tp_m, model.rny_m)
-    generated_expanded_monthly = expanded_monthly_panel(model.miy_m, model.tp_m, model.rny_m)
+    generated_expanded_monthly = expanded_acm_panel(model.miy_m, model.tp_m, model.rny_m)
     generated_daily = official_panel(
         model.miy_d.loc[daily_dates],
         model.tp_d.loc[daily_dates],
         model.rny_d.loc[daily_dates],
     )
+    generated_expanded_daily = expanded_acm_panel(
+        model.miy_d.loc[daily_dates],
+        model.tp_d.loc[daily_dates],
+        model.rny_d.loc[daily_dates],
+    )
+
+    for panel_name, panel in (
+        ("generated monthly panel", generated_monthly),
+        ("expanded monthly panel", generated_expanded_monthly),
+        ("generated daily panel", generated_daily),
+        ("expanded daily panel", generated_expanded_daily),
+    ):
+        ensure_finite(panel_name, panel)
 
     monthly_summary = monthly_by_family = daily_summary = daily_by_family = None
     missing_daily = pd.DatetimeIndex([])
@@ -1075,10 +1145,16 @@ def main() -> None:
             ("expanded_monthly_output_workbook", str(expanded_monthly_output_path.resolve())),
             ("expanded_monthly_output_csv", str(expanded_monthly_csv_path.resolve())),
             ("expanded_monthly_output_csv_gz", str(expanded_monthly_csv_gz_path.resolve())),
+            ("expanded_daily_output_csv", str(expanded_daily_csv_path.resolve())),
+            ("expanded_daily_output_csv_gz", str(expanded_daily_csv_gz_path.resolve())),
             ("gsw_url", GSW_URL),
             ("fedfunds_url", fedfunds_source),
             ("gsw_cache", str(gsw_cache.resolve())),
             ("fedfunds_cache", str(fedfunds_cache.resolve())),
+            ("python_version", platform.python_version()),
+            ("platform", platform.platform()),
+            ("numpy_version", np.__version__),
+            ("pandas_version", pd.__version__),
             ("gsw_daily_first", curve_d_all.index.min().strftime("%Y-%m-%d")),
             ("gsw_daily_last", curve_d_all.index.max().strftime("%Y-%m-%d")),
             ("generated_daily_first", generated_daily.index.min().strftime("%Y-%m-%d")),
@@ -1096,6 +1172,7 @@ def main() -> None:
             ("selected_return_maturities", ", ".join(map(str, SELECTED_RETURN_MATURITIES))),
             ("published_output_maturities", "12, 24, ..., 120 months"),
             ("expanded_monthly_output_maturities", "6, 7, ..., 120 months"),
+            ("expanded_daily_output_maturities", "6, 7, ..., 120 months"),
             ("short_rate_preprocessing", "1M GSW yield smoothed with FEDFUNDS before 1982-01"),
             ("smoothing_beta_intercept", smoothing_beta[0]),
             ("smoothing_beta_fedfunds", smoothing_beta[1]),
@@ -1108,6 +1185,7 @@ def main() -> None:
     write_official_workbook(output_path, generated_monthly, generated_daily)
     write_monthly_only_workbook(expanded_monthly_output_path, generated_expanded_monthly)
     write_panel_csvs(expanded_monthly_csv_path, generated_expanded_monthly)
+    write_panel_csvs(expanded_daily_csv_path, generated_expanded_daily)
     write_csv_outputs(
         diagnostics_dir,
         metadata,
@@ -1126,6 +1204,8 @@ def main() -> None:
     print(f"Wrote expanded monthly workbook: {expanded_monthly_output_path}")
     print(f"Wrote expanded monthly CSV: {expanded_monthly_csv_path}")
     print(f"Wrote expanded monthly CSV gzip: {expanded_monthly_csv_gz_path}")
+    print(f"Wrote expanded daily CSV: {expanded_daily_csv_path}")
+    print(f"Wrote expanded daily CSV gzip: {expanded_daily_csv_gz_path}")
     monthly_range = (
         f"{generated_monthly.index.min().date()} to {generated_monthly.index.max().date()}"
     )

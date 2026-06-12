@@ -1,223 +1,69 @@
 # Official ACM Reproduction
 
-Standalone Python code to reproduce and update the NY Fed nominal ACM workbook.
+Standalone Python code to reproduce and update the NY Fed nominal ACM term
+premium workbook (`ACM Monthly` and `ACM Daily` sheets, columns `ACMY01`–`ACMY10`,
+`ACMTP01`–`ACMTP10`, `ACMRNY01`–`ACMRNY10`).
 
-Generated workbook sheets:
-
-- `ACM Monthly`
-- `ACM Daily`
-
-Generated workbook columns:
-
-- `DATE`
-- `ACMY01` to `ACMY10`
-- `ACMTP01` to `ACMTP10`
-- `ACMRNY01` to `ACMRNY10`
-
-The important replication detail is the original ACM short-rate preprocessing:
-before estimation, the monthly 1-month GSW yield before January 1982 is replaced
-with a fitted value from monthly effective federal funds.
-
-## Setup
+## Usage
 
 ```bash
-python3 -m venv .venv
-. .venv/bin/activate
+python3 -m venv .venv && . .venv/bin/activate
 pip install -r requirements.txt
+
+make reproduce   # reproduce the official NY Fed workbook
+make verify      # reproduce and fail if not within tolerance (CI regression guard)
+make update      # build an updated workbook from current inputs
+make clean       # remove outputs and cached downloads
 ```
 
-## Reproduce The Official NY Fed Workbook
+Outputs are written under `outputs/`, including the reproduced/updated
+workbook, an expanded monthly panel with one-month maturity spacing (6M–120M)
+in `.xlsx`/`.csv`/`.csv.gz`, an expanded daily panel in `.csv`/`.csv.gz`, run
+metadata, and comparison evidence. Raw downloads are cached under `data_cache/`
+(`--refresh` forces a new download).
+Run `python reproduce_acm.py --help` for all flags and tolerances. Unit tests:
+`pytest tests/test_gates.py -q` (no network required).
 
-```bash
-make reproduce
-```
+A GitHub Actions workflow verifies the reproduction on pushes, pull requests,
+and a monthly schedule, and publishes a monthly GitHub release with the
+official-format workbook, monthly and daily expanded gzip CSVs, and the raw
+downloaded inputs used for the run. Release assets are intentionally limited
+to those files.
 
-Equivalent direct command:
+## Sources
 
-```bash
-python reproduce_acm.py \
-  --official https://www.newyorkfed.org/medialibrary/media/research/data_indicators/ACMTermPremium.xls
-```
+- Adrian, Tobias, Richard K. Crump, and Emanuel Moench (2013), "Pricing the
+  Term Structure with Linear Regressions," *Journal of Financial Economics*
+  110(1): 110–138. Paper and official data:
+  [NY Fed term premia page](https://www.newyorkfed.org/research/data_indicators/term-premia-tabs).
+- Gürkaynak, Refet S., Brian Sack, and Jonathan H. Wright (2007), "The U.S.
+  Treasury Yield Curve: 1961 to the Present," *Journal of Monetary Economics*
+  54(8): 2291–2304. Paper and data:
+  [Federal Reserve Board nominal yield curve page](https://www.federalreserve.gov/data/nominal-yield-curve.htm).
+- Monthly effective federal funds rate from Federal Reserve
+  [H.15](https://www.federalreserve.gov/releases/h15/), with
+  [FRED FEDFUNDS](https://fred.stlouisfed.org/series/FEDFUNDS) as fallback.
 
-This downloads the official NY Fed workbook, uses its exact monthly and daily
-dates, and writes:
+## License and Data Attribution
 
-- `outputs/ACMTermPremium_reproduced.xlsx`
-- `outputs/ACMTermPremium_reproduced_monthly_6m_120m.xlsx`
-- `outputs/ACMTermPremium_reproduced_monthly_6m_120m.csv`
-- `outputs/ACMTermPremium_reproduced_monthly_6m_120m.csv.gz`
-- `outputs/ACMTermPremium_reproduced/run_metadata.csv`
-- `outputs/ACMTermPremium_reproduced/monthly_comparison_by_family.csv`
-- `outputs/ACMTermPremium_reproduced/daily_comparison_by_family.csv`
+The code in this repository is released under the MIT License. See
+[`LICENSE`](LICENSE). The MIT License covers the code only; data
+redistributed via this repository's releases remains subject to its
+sources' own terms:
 
-The expanded monthly files contain one-month maturity spacing from 6M through
-120M for each of `ACMY`, `ACMTP`, and `ACMRNY`. Sub-annual columns use month
-suffixes, for example `ACMY006M`; whole-year maturities keep the official
-suffix style, for example `ACMY01`, `ACMY02`, ..., `ACMY10`. The CSV and gzip
-CSV use `YYYY-MM-DD` dates and the same columns as the expanded monthly
-workbook.
+- **ACM term premia** (validation target): © Federal Reserve Bank of
+  New York. Content from the New York Fed subject to the Terms of Use at
+  [newyorkfed.org](https://www.newyorkfed.org/privacy/termsofuse). The
+  series published in this repository's releases are *reproduced* by this
+  project's code — modified/derived content, not the New York Fed's
+  official series — and the modifications must not be attributed to the
+  New York Fed. Redistribution of that content is subject to the same New
+  York Fed Terms of Use, which take precedence over the MIT License for
+  the data.
+- **GSW yield-curve parameters and H.15 federal funds rate**: produced by
+  the Board of Governors of the Federal Reserve System and in the public
+  domain; the Board should be cited as the source.
 
-If a date in the official daily workbook is not available in the current GSW
-download, the date is omitted from the generated daily panel and recorded in
-`run_metadata.csv`.
-
-To compare against a local copy instead, override the source:
-
-```bash
-make reproduce OFFICIAL=../ACMTermPremium.xls
-```
-
-## Verify The Reproduction
-
-```bash
-make verify
-```
-
-This runs the reproduction and additionally fails (non-zero exit) if the
-official monthly and daily workbooks are not fully reproduced within the
-configured basis-point tolerance (default `0.01`, override with
-`MAX_ABS_DIFF_BP`). It is a regression guard suitable for CI:
-
-```bash
-make verify MAX_ABS_DIFF_BP=0.01
-```
-
-Equivalent direct command:
-
-```bash
-python reproduce_acm.py \
-  --official https://www.newyorkfed.org/medialibrary/media/research/data_indicators/ACMTermPremium.xls \
-  --assert-official-reproduced \
-  --max-abs-diff-bp 0.01
-```
-
-### Verification gates
-
-The assertion check applies the following gates, all accumulated before
-reporting a single failure message:
-
-- **Coverage (official dates missing from GSW):** Missing dates earlier than
-  the latest GSW date are *interior gaps* and always fail.  Missing dates
-  after the latest GSW date are *tail gaps*: silently tolerated when ≤
-  `--max-tail-gap-business-days` (default 5) business days old; a `WARNING`
-  is printed for gaps above that tolerance up to 15 business days; gaps
-  beyond 15 business days always fail, regardless of the configured
-  tolerance.  This handles the typical 1-business-day publication lag between the
-  official NY Fed workbook and the GSW feed without breaking the CI check.
-- **ACMY family (fitted yields):** per-column max absolute diff <
-  `--acmy-max-abs-diff-bp` (default `1e-4` bp).
-- **ACMRNY and ACMTP families:** per-column max absolute diff <
-  `--max-abs-diff-bp` (default `0.01` bp), per-column RMSE <
-  `--max-rmse-bp` (default `0.005` bp), and per-column |signed mean| <
-  `--max-bias-bp` (default `0.001` bp).
-- **Identity:** for every maturity, |ACMY − ACMRNY − ACMTP| < 1e-8 bp in
-  the generated panels.
-- **Schema and finiteness:** the expected 30 columns are present in the
-  generated panels, the DATE index is sorted and unique, and no NaN or Inf
-  values are present.
-
-A successful run prints per-family max/RMSE/|bias| statistics and the
-identity residual.
-
-### Additional CLI flags
-
-| Flag | Default | Description |
-|---|---|---|
-| `--acmy-max-abs-diff-bp` | `1e-4` | Max allowed per-column abs diff (bp) for ACMY |
-| `--max-rmse-bp` | `0.005` | Max allowed per-column RMSE (bp) for ACMRNY/ACMTP |
-| `--max-bias-bp` | `0.001` | Max allowed per-column \|signed mean\| (bp) for ACMRNY/ACMTP |
-| `--max-tail-gap-business-days` | `5` | Tail-gap tolerance in business days |
-
-## Tests
-
-The gate logic has a fast, self-contained unit test suite that does not
-require network access or cached data:
-
-```bash
-pytest tests/test_gates.py -q
-```
-
-Coverage includes: interior vs tail gap classification, per-family
-tolerance checks, the systematic-bias gate, the ACMY identity constraint,
-and schema/finiteness validation.
-
-## GitHub Actions Releases
-
-The `reproduce-official-acm` workflow runs on pushes and pull requests for
-`develop` and `main`, on manual dispatch, and at 08:00 UTC on the first day of
-each month. Successful runs upload
-`outputs/ACMTermPremium_reproduced_monthly_6m_120m.csv.gz` as an artifact.
-
-Scheduled runs checkout `main`, run strict verification, and create or update a
-monthly GitHub release named `ACM Term Premium YYYY-MM` with the gzip CSV
-attached. Manual runs can also create or update that release by enabling the
-`make_release` input.
-
-## Create An Updated Workbook
-
-```bash
-make update
-```
-
-Equivalent direct command:
-
-```bash
-python reproduce_acm.py
-```
-
-This downloads current inputs and writes:
-
-- `outputs/ACMTermPremium_updated.xlsx`
-- `outputs/ACMTermPremium_updated_monthly_6m_120m.xlsx`
-- `outputs/ACMTermPremium_updated_monthly_6m_120m.csv`
-- `outputs/ACMTermPremium_updated_monthly_6m_120m.csv.gz`
-- `outputs/ACMTermPremium_updated/run_metadata.csv`
-- raw and smoothed input CSVs under `outputs/ACMTermPremium_updated/`
-
-Update-mode date rules:
-
-- `ACM Daily` uses every available GSW daily date.
-- `ACM Monthly` uses the last available GSW observation in each completed month.
-- A current partial month is excluded by default.
-- Pass `--include-partial-current-month` to include the current partial month.
-
-## Inputs
-
-The script downloads and caches:
-
-- Official NY Fed ACM workbook:
-  `https://www.newyorkfed.org/medialibrary/media/research/data_indicators/ACMTermPremium.xls`
-- GSW nominal yield curve parameters:
-  `https://www.federalreserve.gov/data/yield-curve-tables/feds200628.csv`
-- Monthly effective federal funds from Federal Reserve H.15 (data-download
-  package, series `RIFSPFF_N.M`):
-  `https://www.federalreserve.gov/datadownload/Output.aspx?rel=H15&series=d7e27b7b09a3a7feae95b9c61781fcd8&lastObs=&from=&to=&filetype=csv&label=include&layout=seriescolumn&type=package`
-- Fallback monthly effective federal funds from FRED:
-  `https://fred.stlouisfed.org/graph/fredgraph.csv?id=FEDFUNDS`
-
-Raw downloads are cached under `data_cache/`. Use `--refresh` to force a new
-download.
-
-## Cleaning
-
-```bash
-make clean
-```
-
-Removes generated outputs and cached downloads.
-
-```bash
-make distclean
-```
-
-Also removes the local virtual environment. If the virtual environment is
-active, deactivate it first:
-
-```bash
-deactivate
-make distclean
-```
-
-## License
-
-Released under the MIT License. See [`LICENSE`](LICENSE).
+This project is not affiliated with, endorsed by, or sponsored by the
+Federal Reserve Bank of New York or the Board of Governors of the Federal
+Reserve System.

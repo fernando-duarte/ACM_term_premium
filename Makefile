@@ -13,7 +13,14 @@ update:
 	$(PYTHON) reproduce_acm.py --output "$(UPDATE_OUTPUT)"
 
 verify:
-	$(PYTHON) reproduce_acm.py --official "$(OFFICIAL)" --output "$(REPRO_OUTPUT)" --assert-official-reproduced --max-abs-diff-bp $(MAX_ABS_DIFF_BP)
+	$(PYTHON) reproduce_acm.py --official "$(OFFICIAL)" --output "$(REPRO_OUTPUT)" --refresh --assert-official-reproduced --max-abs-diff-bp $(MAX_ABS_DIFF_BP)
+
+lint:
+	$(PYTHON) -m pre_commit run --all-files
+
+format:
+	$(PYTHON) -m ruff check --fix .
+	$(PYTHON) -m ruff format .
 
 lint:
 	$(PYTHON) -m pre_commit run --all-files

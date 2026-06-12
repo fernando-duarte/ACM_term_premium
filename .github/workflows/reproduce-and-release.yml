@@ -29,7 +29,9 @@ jobs:
     env:
       OFFICIAL_ACM_URL: https://www.newyorkfed.org/medialibrary/media/research/data_indicators/ACMTermPremium.xls
       OUTPUT_WORKBOOK: outputs/ACMTermPremium_reproduced.xlsx
-      OUTPUT_CSV_GZ: outputs/ACMTermPremium_reproduced_monthly_6m_120m.csv.gz
+      OUTPUT_MONTHLY_CSV_GZ: outputs/ACMTermPremium_reproduced_monthly_6m_120m.csv.gz
+      OUTPUT_DAILY_CSV_GZ: outputs/ACMTermPremium_reproduced_daily_6m_120m.csv.gz
+      RELEASE_ASSETS_DIR: outputs/release_assets
       SHOULD_RELEASE: ${{ github.event_name == 'schedule' || github.event.inputs.make_release == 'true' }}
     steps:
       - name: Checkout source
@@ -65,6 +67,7 @@ jobs:
           path: |
             outputs/ACMTermPremium_reproduced.xlsx
             outputs/ACMTermPremium_reproduced_monthly_6m_120m.csv.gz
+            outputs/ACMTermPremium_reproduced_daily_6m_120m.csv.gz
             outputs/ACMTermPremium_reproduced/run_metadata.csv
             outputs/ACMTermPremium_reproduced/monthly_comparison_by_family.csv
             outputs/ACMTermPremium_reproduced/daily_comparison_by_family.csv
@@ -77,6 +80,8 @@ jobs:
           python - <<'PY'
           import csv
           import os
+          import subprocess
+          from datetime import datetime, timezone
           from pathlib import Path
 
           diagnostics = Path("outputs/ACMTermPremium_reproduced")
@@ -94,15 +99,20 @@ jobs:
           monthly_max = max_diff(diagnostics / "monthly_comparison_summary.csv")
           daily_max = max_diff(diagnostics / "daily_comparison_summary.csv")
 
-          release_month = os.popen("date -u +%Y-%m").read().strip()
+          release_month = datetime.now(timezone.utc).strftime("%Y-%m")
           title = f"ACM Term Premium {release_month}"
           tag = f"acm-term-premium-{release_month}"
-          commit = os.popen("git rev-parse HEAD").read().strip()
+          commit = subprocess.run(
+              ["git", "rev-parse", "HEAD"], check=True, capture_output=True, text=True
+          ).stdout.strip()
 
           gsw_url = metadata.get("gsw_url", "")
           fedfunds_url = metadata.get("fedfunds_url", "")
           gsw_first = metadata.get("gsw_daily_first", "")
           gsw_last = metadata.get("gsw_daily_last", "")
+          official_input = Path(metadata.get("official_workbook_cache", "")).name or "ACMTermPremium.xls"
+          gsw_input = Path(metadata.get("gsw_cache", "")).name or "feds200628.csv"
+          fedfunds_input = Path(metadata.get("fedfunds_cache", "")).name or "FEDFUNDS.csv"
 
           notes = f"""# {title}
 
@@ -125,10 +135,21 @@ jobs:
 
           - `ACMTermPremium_reproduced.xlsx` — official-format workbook (ACM Monthly + ACM Daily)
           - `ACMTermPremium_reproduced_monthly_6m_120m.csv.gz` — expanded monthly CSV (6 m–120 m maturities)
-          - `run_metadata.csv` — input URLs, vintages, date ranges, max diffs
-          - `monthly_comparison_by_family.csv` — monthly reproduction evidence by series family
-          - `daily_comparison_by_family.csv` — daily reproduction evidence by series family
-          - `SHA256SUMS` — SHA-256 checksums for all release assets
+          - `ACMTermPremium_reproduced_daily_6m_120m.csv.gz` — expanded daily CSV (6 m–120 m maturities)
+          - `{official_input}` — raw NY Fed ACM workbook download used for validation
+          - `{gsw_input}` — raw GSW yield-curve parameter download
+          - `{fedfunds_input}` — raw federal funds rate download used for short-rate preprocessing
+
+          ## Data license and attribution
+
+          The series in these assets are *reproduced* by this project's code --
+          modified/derived content whose modifications must not be attributed to
+          the Federal Reserve Bank of New York. ACM term premium content: (c)
+          Federal Reserve Bank of New York, subject to the Terms of Use at
+          newyorkfed.org; redistribution carries those same terms. GSW
+          yield-curve and H.15 input data are produced by the Board of Governors
+          of the Federal Reserve System (public domain; cite the Board). This
+          project is not affiliated with or endorsed by either institution.
           """
           Path("release_notes.md").write_text(notes)
 
@@ -138,23 +159,50 @@ jobs:
               handle.write(f"target={commit}\n")
           PY
 
-      - name: Generate SHA256SUMS
+      - name: Stage release assets
         if: env.SHOULD_RELEASE == 'true'
-        # The manifest deliberately uses bare filenames: GitHub release assets
-        # are published flat, so `sha256sum -c SHA256SUMS` works from the
-        # directory where a user downloads all the assets.
         run: |
-          (
-            cd outputs
-            sha256sum \
-              ACMTermPremium_reproduced.xlsx \
-              ACMTermPremium_reproduced_monthly_6m_120m.csv.gz
-            cd ACMTermPremium_reproduced
-            sha256sum \
-              run_metadata.csv \
-              monthly_comparison_by_family.csv \
-              daily_comparison_by_family.csv
-          ) > outputs/SHA256SUMS
+          python - <<'PY'
+          import csv
+          import os
+          import shutil
+          from pathlib import Path
+
+          diagnostics = Path("outputs/ACMTermPremium_reproduced")
+          release_dir = Path(os.environ["RELEASE_ASSETS_DIR"])
+          if release_dir.exists():
+              shutil.rmtree(release_dir)
+          release_dir.mkdir(parents=True)
+
+          metadata = {}
+          with (diagnostics / "run_metadata.csv").open(newline="") as handle:
+              for row in csv.DictReader(handle):
+                  metadata[row["setting"]] = row["value"]
+
+          sources = [
+              os.environ["OUTPUT_WORKBOOK"],
+              os.environ["OUTPUT_MONTHLY_CSV_GZ"],
+              os.environ["OUTPUT_DAILY_CSV_GZ"],
+              metadata["official_workbook_cache"],
+              metadata["gsw_cache"],
+              metadata["fedfunds_cache"],
+          ]
+
+          staged = []
+          for source in sources:
+              source_path = Path(source)
+              if not source_path.is_file():
+                  raise FileNotFoundError(f"Release asset source does not exist: {source_path}")
+              target_path = release_dir / source_path.name
+              if target_path.name in staged:
+                  raise ValueError(f"Duplicate release asset filename: {target_path.name}")
+              shutil.copy2(source_path, target_path)
+              staged.append(target_path.name)
+
+          print("Staged release assets:")
+          for name in sorted(staged):
+              print(f"- {name}")
+          PY
 
       - name: Create or update monthly release
         if: env.SHOULD_RELEASE == 'true'
@@ -164,30 +212,52 @@ jobs:
           TITLE: ${{ steps.release_meta.outputs.title }}
           TARGET: ${{ steps.release_meta.outputs.target }}
         run: |
-          DIAG="outputs/ACMTermPremium_reproduced"
+          mapfile -t EXPECTED_ASSETS < <(
+            find "$RELEASE_ASSETS_DIR" -maxdepth 1 -type f -exec basename {} \; | sort
+          )
+
+          if [ "${#EXPECTED_ASSETS[@]}" -eq 0 ]; then
+            echo "No staged release assets found in $RELEASE_ASSETS_DIR" >&2
+            exit 1
+          fi
+
+          release_has_asset() {
+            local candidate="$1"
+            local expected
+            for expected in "${EXPECTED_ASSETS[@]}"; do
+              if [ "$candidate" = "$expected" ]; then
+                return 0
+              fi
+            done
+            return 1
+          }
+
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            while IFS= read -r asset; do
+              if [ -n "$asset" ] && ! release_has_asset "$asset"; then
+                gh release delete-asset "$TAG" "$asset" \
+                  --repo "$GITHUB_REPOSITORY" \
+                  --yes
+              fi
+            done < <(
+              gh release view "$TAG" \
+                --repo "$GITHUB_REPOSITORY" \
+                --json assets \
+                --jq '.assets[].name'
+            )
+
             gh release edit "$TAG" \
               --repo "$GITHUB_REPOSITORY" \
               --target "$TARGET" \
               --title "$TITLE" \
               --notes-file release_notes.md
             gh release upload "$TAG" \
-              "$OUTPUT_WORKBOOK" \
-              "$OUTPUT_CSV_GZ" \
-              "$DIAG/run_metadata.csv" \
-              "$DIAG/monthly_comparison_by_family.csv" \
-              "$DIAG/daily_comparison_by_family.csv" \
-              outputs/SHA256SUMS \
+              "$RELEASE_ASSETS_DIR"/* \
               --repo "$GITHUB_REPOSITORY" \
               --clobber
           else
             gh release create "$TAG" \
-              "$OUTPUT_WORKBOOK" \
-              "$OUTPUT_CSV_GZ" \
-              "$DIAG/run_metadata.csv" \
-              "$DIAG/monthly_comparison_by_family.csv" \
-              "$DIAG/daily_comparison_by_family.csv" \
-              outputs/SHA256SUMS \
+              "$RELEASE_ASSETS_DIR"/* \
               --repo "$GITHUB_REPOSITORY" \
               --target "$TARGET" \
               --title "$TITLE" \
