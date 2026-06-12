@@ -3,11 +3,9 @@ name: Reproduce NY Fed ACM
 on:
   pull_request:
     branches:
-      - develop
       - main
   push:
     branches:
-      - develop
       - main
   schedule:
     - cron: "0 8 1 * *"
