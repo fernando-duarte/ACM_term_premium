@@ -365,9 +365,20 @@ class NominalACM:
         var_coeffs = x_lhs @ np.linalg.pinv(x_rhs)
         phi = var_coeffs[:, 1:]
 
+        # Reparametrization: the VAR intercept is folded into the residuals
+        # (v = u_OLS + mu_hat) instead of being carried separately. All model
+        # outputs (yields, risk-neutral yields, term premia) are identical to
+        # the textbook ACM estimator, but lambda0 and mu_star downstream are
+        # shifted by mu_hat relative to ACM's published parameters -- do not
+        # interpret them directly as the paper's prices of risk.
         mu = np.zeros((self.n_factors, 1))
         var_coeffs[:, [0]] = 0.0
         v = x_lhs - var_coeffs @ x_rhs
+        # np.cov demeans internally (ddof=1), so s0 equals the covariance of
+        # the true OLS residuals despite the folded-in intercept. The pricing
+        # error variance in excess_return_regression uses np.var (ddof=0);
+        # both enter only second-order convexity terms, and the mixed
+        # convention matches the published series.
         s0 = np.cov(v).reshape((-1, 1))
         return mu, phi, v, s0
 
