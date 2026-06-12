@@ -171,6 +171,16 @@ class TestMainEndToEnd:
         # Output workbook should have been created
         assert output_path.exists(), "main() did not write the output workbook"
 
+        daily_gzip = output_path.with_name(f"{output_path.stem}_daily_6m_120m.csv.gz")
+        assert daily_gzip.exists(), "main() did not write the expanded daily gzip CSV"
+        expected_cols = ["DATE"] + [
+            f"{prefix}{reproduce_acm.maturity_suffix(maturity)}"
+            for prefix in ("ACMY", "ACMTP", "ACMRNY")
+            for maturity in reproduce_acm.EXPANDED_OUTPUT_MATURITIES
+        ]
+        daily_header = pd.read_csv(daily_gzip, nrows=0)
+        assert list(daily_header.columns) == expected_cols
+
     def test_main_does_not_write_to_repo_outputs(
         self,
         tmp_path: Path,

@@ -40,7 +40,8 @@ N_FACTORS = 5
 PC_MATURITIES = list(range(3, 121))
 SELECTED_RETURN_MATURITIES = [6, 12, 24, 36, 48, 60, 72, 84, 96, 108, 120]
 PUBLISHED_MATURITIES = list(range(12, 121, 12))
-EXPANDED_MONTHLY_MATURITIES = list(range(6, 121))
+EXPANDED_OUTPUT_MATURITIES = list(range(6, 121))
+EXPANDED_MONTHLY_MATURITIES = EXPANDED_OUTPUT_MATURITIES
 ALL_MATURITIES = list(range(1, 121))
 SMOOTHING_START = pd.Period("1982-01", freq="M")
 
@@ -478,12 +479,20 @@ def official_panel(miy: pd.DataFrame, tp: pd.DataFrame, rny: pd.DataFrame) -> pd
     return acm_panel(miy, tp, rny, PUBLISHED_MATURITIES)
 
 
+def expanded_acm_panel(
+    miy: pd.DataFrame,
+    tp: pd.DataFrame,
+    rny: pd.DataFrame,
+) -> pd.DataFrame:
+    return acm_panel(miy, tp, rny, EXPANDED_OUTPUT_MATURITIES)
+
+
 def expanded_monthly_panel(
     miy: pd.DataFrame,
     tp: pd.DataFrame,
     rny: pd.DataFrame,
 ) -> pd.DataFrame:
-    return acm_panel(miy, tp, rny, EXPANDED_MONTHLY_MATURITIES)
+    return expanded_acm_panel(miy, tp, rny)
 
 
 def _column_family(column: str) -> str:
@@ -1034,6 +1043,8 @@ def main() -> None:
     )
     expanded_monthly_csv_path = expanded_monthly_output_path.with_suffix(".csv")
     expanded_monthly_csv_gz_path = expanded_monthly_csv_path.with_suffix(".csv.gz")
+    expanded_daily_csv_path = output_path.with_name(f"{output_path.stem}_daily_6m_120m.csv")
+    expanded_daily_csv_gz_path = expanded_daily_csv_path.with_suffix(".csv.gz")
     diagnostics_dir = output_path.with_suffix("")
 
     curve_d_all, gsw_cache = load_gsw_curve(cache_dir, args.refresh)
@@ -1098,8 +1109,13 @@ def main() -> None:
         )
 
     generated_monthly = official_panel(model.miy_m, model.tp_m, model.rny_m)
-    generated_expanded_monthly = expanded_monthly_panel(model.miy_m, model.tp_m, model.rny_m)
+    generated_expanded_monthly = expanded_acm_panel(model.miy_m, model.tp_m, model.rny_m)
     generated_daily = official_panel(
+        model.miy_d.loc[daily_dates],
+        model.tp_d.loc[daily_dates],
+        model.rny_d.loc[daily_dates],
+    )
+    generated_expanded_daily = expanded_acm_panel(
         model.miy_d.loc[daily_dates],
         model.tp_d.loc[daily_dates],
         model.rny_d.loc[daily_dates],
@@ -1109,6 +1125,7 @@ def main() -> None:
         ("generated monthly panel", generated_monthly),
         ("expanded monthly panel", generated_expanded_monthly),
         ("generated daily panel", generated_daily),
+        ("expanded daily panel", generated_expanded_daily),
     ):
         ensure_finite(panel_name, panel)
 
@@ -1128,6 +1145,8 @@ def main() -> None:
             ("expanded_monthly_output_workbook", str(expanded_monthly_output_path.resolve())),
             ("expanded_monthly_output_csv", str(expanded_monthly_csv_path.resolve())),
             ("expanded_monthly_output_csv_gz", str(expanded_monthly_csv_gz_path.resolve())),
+            ("expanded_daily_output_csv", str(expanded_daily_csv_path.resolve())),
+            ("expanded_daily_output_csv_gz", str(expanded_daily_csv_gz_path.resolve())),
             ("gsw_url", GSW_URL),
             ("fedfunds_url", fedfunds_source),
             ("gsw_cache", str(gsw_cache.resolve())),
@@ -1153,6 +1172,7 @@ def main() -> None:
             ("selected_return_maturities", ", ".join(map(str, SELECTED_RETURN_MATURITIES))),
             ("published_output_maturities", "12, 24, ..., 120 months"),
             ("expanded_monthly_output_maturities", "6, 7, ..., 120 months"),
+            ("expanded_daily_output_maturities", "6, 7, ..., 120 months"),
             ("short_rate_preprocessing", "1M GSW yield smoothed with FEDFUNDS before 1982-01"),
             ("smoothing_beta_intercept", smoothing_beta[0]),
             ("smoothing_beta_fedfunds", smoothing_beta[1]),
@@ -1165,6 +1185,7 @@ def main() -> None:
     write_official_workbook(output_path, generated_monthly, generated_daily)
     write_monthly_only_workbook(expanded_monthly_output_path, generated_expanded_monthly)
     write_panel_csvs(expanded_monthly_csv_path, generated_expanded_monthly)
+    write_panel_csvs(expanded_daily_csv_path, generated_expanded_daily)
     write_csv_outputs(
         diagnostics_dir,
         metadata,
@@ -1183,6 +1204,8 @@ def main() -> None:
     print(f"Wrote expanded monthly workbook: {expanded_monthly_output_path}")
     print(f"Wrote expanded monthly CSV: {expanded_monthly_csv_path}")
     print(f"Wrote expanded monthly CSV gzip: {expanded_monthly_csv_gz_path}")
+    print(f"Wrote expanded daily CSV: {expanded_daily_csv_path}")
+    print(f"Wrote expanded daily CSV gzip: {expanded_daily_csv_gz_path}")
     monthly_range = (
         f"{generated_monthly.index.min().date()} to {generated_monthly.index.max().date()}"
     )
