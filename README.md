@@ -76,7 +76,8 @@ make verify
 This runs the reproduction and additionally fails (non-zero exit) if the
 official monthly and daily workbooks are not fully reproduced within the
 configured basis-point tolerance (default `0.01`, override with
-`MAX_ABS_DIFF_BP`). It is a regression guard suitable for CI:
+`MAX_ABS_DIFF_BP`). `make verify` refreshes the cached inputs (network required) so local runs
+match CI. It is a regression guard suitable for CI:
 
 ```bash
 make verify MAX_ABS_DIFF_BP=0.01
@@ -145,11 +146,13 @@ and schema/finiteness validation.
 
 The `reproduce-official-acm` workflow runs on pushes and pull requests for
 `develop` and `main`, on manual dispatch, and at 08:00 UTC on the first day of
-each month. Successful runs upload
-`outputs/ACMTermPremium_reproduced_monthly_6m_120m.csv.gz` as an artifact.
+each month. Successful runs upload an artifact bundle containing the reproduced
+workbook, the expanded monthly CSV (gzip), `run_metadata.csv`, and the
+monthly/daily comparison evidence.
 
 Scheduled runs checkout `main`, run strict verification, and create or update a
-monthly GitHub release named `ACM Term Premium YYYY-MM` with the gzip CSV
+monthly GitHub release named `ACM Term Premium YYYY-MM` with the workbook,
+gzip CSV, run metadata, comparison evidence, and a `SHA256SUMS` manifest
 attached. Manual runs can also create or update that release by enabling the
 `make_release` input.
 
@@ -218,6 +221,26 @@ deactivate
 make distclean
 ```
 
-## License
+## License and Data Attribution
 
-Released under the MIT License. See [`LICENSE`](LICENSE).
+The code in this repository is released under the MIT License. See
+[`LICENSE`](LICENSE). The MIT License covers the code only; data
+redistributed via this repository's releases remains subject to its
+sources' own terms:
+
+- **ACM term premia** (validation target): © Federal Reserve Bank of
+  New York. Content from the New York Fed subject to the Terms of Use at
+  [newyorkfed.org](https://www.newyorkfed.org/privacy/termsofuse). The
+  series published in this repository's releases are *reproduced* by this
+  project's code — modified/derived content, not the New York Fed's
+  official series — and the modifications must not be attributed to the
+  New York Fed. Redistribution of that content is subject to the same New
+  York Fed Terms of Use, which take precedence over the MIT License for
+  the data.
+- **GSW yield-curve parameters and H.15 federal funds rate**: produced by
+  the Board of Governors of the Federal Reserve System and in the public
+  domain; the Board should be cited as the source.
+
+This project is not affiliated with, endorsed by, or sponsored by the
+Federal Reserve Bank of New York or the Board of Governors of the Federal
+Reserve System.

@@ -3,6 +3,8 @@ from __future__ import annotations
 import argparse
 import io
 import json
+import os
+import platform
 import time
 import urllib.parse
 import urllib.request
@@ -65,12 +67,17 @@ def read_or_download(url: str, cache_path: Path, refresh: bool) -> bytes:
     if cache_path.exists() and not refresh:
         data = cache_path.read_bytes()
         if data:
+            age_days = (time.time() - cache_path.stat().st_mtime) / 86400.0
+            print(f"Using cached {cache_path.name} ({age_days:.0f} days old; --refresh to update)")
             return data
         cache_path.unlink()
 
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     data = fetch_url(url)
-    cache_path.write_bytes(data)
+    # Write-then-rename so an interrupted run never leaves a truncated cache.
+    temp_path = cache_path.with_suffix(cache_path.suffix + ".tmp")
+    temp_path.write_bytes(data)
+    os.replace(temp_path, cache_path)
     return data
 
 
@@ -170,15 +177,29 @@ def load_fedfunds(cache_dir: Path, refresh: bool) -> tuple[pd.Series, Path, str]
 
     errors = []
     for source_name, url, cache_path in sources:
+        # Snapshot the prior cache before a refresh can overwrite it, so a
+        # download that succeeds at the HTTP layer but fails to parse can
+        # still fall back to the last good copy. The fallback is deliberately
+        # low-stakes: FEDFUNDS only feeds the pre-1982 one-month-rate
+        # smoothing, so a slightly stale series cannot move current-period
+        # term premia.
+        stale = cache_path.read_bytes() if refresh and cache_path.exists() else b""
         try:
             raw = read_or_download(url, cache_path, refresh)
             return parse_fedfunds(raw), cache_path, url
         except Exception as exc:
             errors.append(f"{source_name}: {exc!r}")
-            if cache_path.exists() and refresh:
+            if stale:
                 try:
                     source = f"{url} (stale cache fallback)"
-                    return parse_fedfunds(cache_path.read_bytes()), cache_path, source
+                    fedfunds = parse_fedfunds(stale)
+                    # The failed refresh overwrote the cache; restore the last
+                    # good bytes (atomically, like read_or_download) so the
+                    # next run does not start from poison.
+                    restore_temp = cache_path.with_suffix(cache_path.suffix + ".tmp")
+                    restore_temp.write_bytes(stale)
+                    os.replace(restore_temp, cache_path)
+                    return fedfunds, cache_path, source
                 except Exception as cache_exc:
                     errors.append(f"{source_name} cache fallback: {cache_exc!r}")
 
@@ -345,9 +366,20 @@ class NominalACM:
         var_coeffs = x_lhs @ np.linalg.pinv(x_rhs)
         phi = var_coeffs[:, 1:]
 
+        # Reparametrization: the VAR intercept is folded into the residuals
+        # (v = u_OLS + mu_hat) instead of being carried separately. All model
+        # outputs (yields, risk-neutral yields, term premia) are identical to
+        # the textbook ACM estimator, but lambda0 and mu_star downstream are
+        # shifted by mu_hat relative to ACM's published parameters -- do not
+        # interpret them directly as the paper's prices of risk.
         mu = np.zeros((self.n_factors, 1))
         var_coeffs[:, [0]] = 0.0
         v = x_lhs - var_coeffs @ x_rhs
+        # np.cov demeans internally (ddof=1), so s0 equals the covariance of
+        # the true OLS residuals despite the folded-in intercept. The pricing
+        # error variance in excess_return_regression uses np.var (ddof=0);
+        # both enter only second-order convexity terms, and the mixed
+        # convention matches the published series.
         s0 = np.cov(v).reshape((-1, 1))
         return mu, phi, v, s0
 
@@ -752,6 +784,17 @@ def write_csv_outputs(
         )
 
 
+def ensure_finite(name: str, frame: pd.DataFrame) -> None:
+    bad = ~np.isfinite(frame.to_numpy())
+    if bad.any():
+        row, col = np.argwhere(bad)[0]
+        raise ValueError(
+            f"The {name} contains non-finite values (first at "
+            f"{frame.index[row]}, column {frame.columns[col]}); "
+            "refusing to write outputs."
+        )
+
+
 def metadata_frame(items: list[tuple[str, object]]) -> pd.DataFrame:
     return pd.DataFrame([(key, value) for key, value in items], columns=["setting", "value"])
 
@@ -1038,8 +1081,10 @@ def main() -> None:
 
     # numpy 2.x on Apple's Accelerate BLAS raises spurious floating-point
     # warnings ("divide by zero / invalid value / overflow encountered in
-    # matmul") on well-conditioned matrix products. Scope the suppression to
-    # the linear-algebra core so genuine numerical issues elsewhere still surface.
+    # matmul") on well-conditioned matrix products. The matmuls are spread
+    # across the whole estimation, so the suppression has to cover it all;
+    # ensure_finite() below catches any genuine non-finite result before
+    # outputs are written.
     with np.errstate(over="ignore", divide="ignore", invalid="ignore"):
         curve_m, smoothing_beta, smoothing_fit_months, smoothed_months = (
             smooth_pre_1982_one_month_rate(curve_m_raw, fedfunds)
@@ -1058,6 +1103,13 @@ def main() -> None:
         model.tp_d.loc[daily_dates],
         model.rny_d.loc[daily_dates],
     )
+
+    for panel_name, panel in (
+        ("generated monthly panel", generated_monthly),
+        ("expanded monthly panel", generated_expanded_monthly),
+        ("generated daily panel", generated_daily),
+    ):
+        ensure_finite(panel_name, panel)
 
     monthly_summary = monthly_by_family = daily_summary = daily_by_family = None
     missing_daily = pd.DatetimeIndex([])
@@ -1079,6 +1131,10 @@ def main() -> None:
             ("fedfunds_url", fedfunds_source),
             ("gsw_cache", str(gsw_cache.resolve())),
             ("fedfunds_cache", str(fedfunds_cache.resolve())),
+            ("python_version", platform.python_version()),
+            ("platform", platform.platform()),
+            ("numpy_version", np.__version__),
+            ("pandas_version", pd.__version__),
             ("gsw_daily_first", curve_d_all.index.min().strftime("%Y-%m-%d")),
             ("gsw_daily_last", curve_d_all.index.max().strftime("%Y-%m-%d")),
             ("generated_daily_first", generated_daily.index.min().strftime("%Y-%m-%d")),
