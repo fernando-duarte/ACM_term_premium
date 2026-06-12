@@ -18,7 +18,7 @@ MONTHLY_SHEET = "ACM Monthly"
 DAILY_SHEET = "ACM Daily"
 EXCEL_DATE_FORMAT = "m/d/yyyy"
 
-DEFAULT_REPRODUCTION_OUTPUT = Path("outputs/ACMTermPremium_reproduced.xlsx")
+DEFAULT_REPLICATION_OUTPUT = Path("outputs/ACMTermPremium_reproduced.xlsx")
 DEFAULT_UPDATE_OUTPUT = Path("outputs/ACMTermPremium_updated.xlsx")
 DEFAULT_CACHE_DIR = Path("data_cache")
 
@@ -814,7 +814,7 @@ def assert_official_reproduced(
     check_coverage_gaps(missing_monthly, gsw_last, "monthly", max_tail_gap_bd, failures)
     check_coverage_gaps(missing_daily, gsw_last, "daily", max_tail_gap_bd, failures)
 
-    # Per-family reproduction checks
+    # Per-family replication checks
     panels_named = (("monthly", monthly_summary), ("daily", daily_summary))
     for panel_name, summary in panels_named:
         if summary is None:
@@ -871,7 +871,7 @@ def assert_official_reproduced(
 
     if failures:
         message = "\n".join(f" - {failure}" for failure in failures)
-        raise SystemExit(f"NY Fed ACM reproduction check FAILED:\n{message}")
+        raise SystemExit(f"NY Fed ACM replication check FAILED:\n{message}")
 
     # Build per-family summary for the PASS message
     family_stats: dict[str, dict[str, float]] = {}
@@ -902,7 +902,7 @@ def assert_official_reproduced(
     fam_summary = "\n".join(fam_lines)
 
     print(
-        f"\nNY Fed ACM reproduction check PASSED.\n"
+        f"\nNY Fed ACM replication check PASSED.\n"
         f"Per-family stats:\n{fam_summary}\n"
         f"Identity residual (max |ACMY-ACMRNY-ACMTP|): {identity_max:.6g} bp"
     )
@@ -910,7 +910,7 @@ def assert_official_reproduced(
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Reproduce or update nominal ACM yields and term premia.",
+        description="Replicate or update nominal ACM yields and term premia.",
     )
     parser.add_argument(
         "--official",
@@ -925,7 +925,7 @@ def main() -> None:
         default=None,
         help=(
             "Output workbook path. Defaults to "
-            f"{DEFAULT_REPRODUCTION_OUTPUT} with --official and {DEFAULT_UPDATE_OUTPUT} otherwise."
+            f"{DEFAULT_REPLICATION_OUTPUT} with --official and {DEFAULT_UPDATE_OUTPUT} otherwise."
         ),
     )
     parser.add_argument(
@@ -1004,7 +1004,7 @@ def main() -> None:
     official_source = args.official
     exact_mode = official_source is not None
     output_path = Path(
-        args.output or (DEFAULT_REPRODUCTION_OUTPUT if exact_mode else DEFAULT_UPDATE_OUTPUT)
+        args.output or (DEFAULT_REPLICATION_OUTPUT if exact_mode else DEFAULT_UPDATE_OUTPUT)
     )
     expanded_monthly_output_path = output_path.with_name(
         f"{output_path.stem}_monthly_3m_120m{output_path.suffix}"
@@ -1208,7 +1208,7 @@ def main() -> None:
                 generated_daily=generated_daily,
             )
     elif args.assert_official_reproduced:
-        raise SystemExit("NY Fed ACM reproduction check requires --official.")
+        raise SystemExit("NY Fed ACM replication check requires --official.")
 
 
 if __name__ == "__main__":

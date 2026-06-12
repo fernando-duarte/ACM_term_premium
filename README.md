@@ -1,6 +1,6 @@
-# Unofficial ACM Reproduction
+# Unofficial ACM Replication
 
-Standalone Python code to reproduce and update the NY Fed nominal ACM term
+Standalone Python code to replicate and update the NY Fed nominal ACM term
 premium workbook (`ACM Monthly` and `ACM Daily` sheets, columns `ACMY01`–`ACMY10`,
 `ACMTP01`–`ACMTP10`, `ACMRNY01`–`ACMRNY10`).
 
@@ -10,13 +10,13 @@ premium workbook (`ACM Monthly` and `ACM Daily` sheets, columns `ACMY01`–`ACMY
 python3 -m venv .venv && . .venv/bin/activate
 pip install -r requirements.txt
 
-make reproduce   # reproduce the NY Fed workbook
-make verify      # reproduce and fail if not within tolerance (CI regression guard)
+make reproduce   # replicate the NY Fed workbook
+make verify      # replicate and fail if not within tolerance (CI regression guard)
 make update      # build an updated workbook from current inputs
 make clean       # remove outputs and cached downloads
 ```
 
-Outputs are written under `outputs/`, including the reproduced/updated
+Outputs are written under `outputs/`, including the replicated/updated
 workbook, an expanded monthly panel with one-month maturity spacing (3M–120M)
 in `.xlsx`/`.csv`/`.csv.gz`, an expanded daily panel in `.csv`/`.csv.gz`, run
 metadata, and comparison evidence. Raw downloads are cached under `data_cache/`
@@ -24,7 +24,7 @@ metadata, and comparison evidence. Raw downloads are cached under `data_cache/`
 Run `python reproduce_acm.py --help` for all flags and tolerances. Unit tests:
 `pytest` (no network required).
 
-A GitHub Actions workflow verifies the reproduction on pushes, pull requests,
+A GitHub Actions workflow verifies the replication on pushes, pull requests,
 and a monthly schedule, and publishes a monthly GitHub release with the
 NY Fed-format workbook, monthly and daily expanded gzip CSVs, and the raw
 downloaded inputs used for the run. Release assets contain only those files.
@@ -53,7 +53,7 @@ sources' own terms:
 - **ACM term premia** (validation target): © Federal Reserve Bank of
   New York. Content from the New York Fed subject to the Terms of Use at
   [newyorkfed.org](https://www.newyorkfed.org/privacy/termsofuse). The
-  series published in this repository's releases are *reproduced* by this
+  series published in this repository's releases are *replicated* by this
   project's code — modified/derived content, not the New York Fed's
   official series — and the modifications must not be attributed to the
   New York Fed. Redistribution of that content is subject to the same New
