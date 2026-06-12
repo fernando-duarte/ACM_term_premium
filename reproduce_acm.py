@@ -4,6 +4,7 @@ import argparse
 import io
 import json
 import os
+import platform
 import time
 import urllib.parse
 import urllib.request
@@ -1130,6 +1131,10 @@ def main() -> None:
             ("fedfunds_url", fedfunds_source),
             ("gsw_cache", str(gsw_cache.resolve())),
             ("fedfunds_cache", str(fedfunds_cache.resolve())),
+            ("python_version", platform.python_version()),
+            ("platform", platform.platform()),
+            ("numpy_version", np.__version__),
+            ("pandas_version", pd.__version__),
             ("gsw_daily_first", curve_d_all.index.min().strftime("%Y-%m-%d")),
             ("gsw_daily_last", curve_d_all.index.max().strftime("%Y-%m-%d")),
             ("generated_daily_first", generated_daily.index.min().strftime("%Y-%m-%d")),
