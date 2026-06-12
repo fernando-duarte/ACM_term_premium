@@ -459,3 +459,29 @@ class TestSmoothPre1982OneMonthRate:
         _, _, n_fit, n_replace = reproduce_acm.smooth_pre_1982_one_month_rate(curve_m, fedfunds)
         assert n_fit > 0
         assert n_replace > 0
+
+
+# ===========================================================================
+# read_or_download
+# ===========================================================================
+
+
+class TestReadOrDownload:
+    def test_download_writes_cache_atomically(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(reproduce_acm, "fetch_url", lambda url: b"payload")
+        cache_path = tmp_path / "cache.csv"
+        data = reproduce_acm.read_or_download("https://example.com/x.csv", cache_path, refresh=False)
+        assert data == b"payload"
+        assert cache_path.read_bytes() == b"payload"
+        leftovers = [p for p in tmp_path.iterdir() if p != cache_path]
+        assert leftovers == []
+
+    def test_cache_hit_skips_download(self, tmp_path, monkeypatch):
+        def boom(url):
+            raise AssertionError("must not download on cache hit")
+
+        monkeypatch.setattr(reproduce_acm, "fetch_url", boom)
+        cache_path = tmp_path / "cache.csv"
+        cache_path.write_bytes(b"cached")
+        data = reproduce_acm.read_or_download("https://example.com/x.csv", cache_path, refresh=False)
+        assert data == b"cached"

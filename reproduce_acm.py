@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import io
 import json
+import os
 import time
 import urllib.parse
 import urllib.request
@@ -65,12 +66,17 @@ def read_or_download(url: str, cache_path: Path, refresh: bool) -> bytes:
     if cache_path.exists() and not refresh:
         data = cache_path.read_bytes()
         if data:
+            age_days = (time.time() - cache_path.stat().st_mtime) / 86400.0
+            print(f"Using cached {cache_path.name} ({age_days:.0f} days old; --refresh to update)")
             return data
         cache_path.unlink()
 
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     data = fetch_url(url)
-    cache_path.write_bytes(data)
+    # Write-then-rename so an interrupted run never leaves a truncated cache.
+    temp_path = cache_path.with_suffix(cache_path.suffix + ".tmp")
+    temp_path.write_bytes(data)
+    os.replace(temp_path, cache_path)
     return data
 
 
