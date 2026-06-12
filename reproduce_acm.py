@@ -184,8 +184,8 @@ def load_fedfunds(cache_dir: Path, refresh: bool) -> tuple[pd.Series, Path, str]
     for source_name, url, cache_path in sources:
         # Snapshot the prior cache before a refresh can overwrite it, so a
         # download that succeeds at the HTTP layer but fails to parse can
-        # still fall back to the last good copy. The fallback is deliberately
-        # low-stakes: FEDFUNDS only feeds the pre-1982 one-month-rate
+        # still fall back to the last good copy. The fallback has limited
+        # impact: FEDFUNDS only feeds the pre-1982 one-month-rate
         # smoothing, so a slightly stale series cannot move current-period
         # term premia.
         stale = cache_path.read_bytes() if refresh and cache_path.exists() else b""
@@ -585,9 +585,7 @@ def check_coverage_gaps(
 
     if len(interior):
         dates_str = ", ".join(d.strftime("%Y-%m-%d") for d in interior)
-        failures.append(
-            f"Official {label} dates missing from GSW input (interior gaps): {dates_str}"
-        )
+        failures.append(f"NY Fed {label} dates missing from GSW input (interior gaps): {dates_str}")
 
     for missing_date in tail:
         age_bd = int(np.busday_count(gsw_last.date(), missing_date.date()))
@@ -595,7 +593,7 @@ def check_coverage_gaps(
         if age_bd > 15:
             # Hard cap: fails regardless of the configured silent tolerance.
             failures.append(
-                f"Official {label} date {date_str} missing from GSW "
+                f"NY Fed {label} date {date_str} missing from GSW "
                 f"(tail gap {age_bd} bd from gsw_last {gsw_last.date()} "
                 f"exceeds 15-bd maximum)."
             )
@@ -603,7 +601,7 @@ def check_coverage_gaps(
             pass  # tolerate silently
         else:
             print(
-                f"WARNING: Official {label} date {date_str} missing from GSW "
+                f"WARNING: NY Fed {label} date {date_str} missing from GSW "
                 f"(tail gap {age_bd} bd from gsw_last {gsw_last.date()}); "
                 f"within 15-bd warning window."
             )
@@ -833,7 +831,7 @@ def assert_official_reproduced(
     panels_named = (("monthly", monthly_summary), ("daily", daily_summary))
     for panel_name, summary in panels_named:
         if summary is None:
-            # Not applicable for this run (e.g. no official source provided)
+            # Not applicable for this run (e.g. no comparison source provided)
             continue
         if summary.empty:
             failures.append(f"{panel_name.capitalize()} comparison summary is empty.")
@@ -892,7 +890,7 @@ def assert_official_reproduced(
 
     if failures:
         message = "\n".join(f" - {failure}" for failure in failures)
-        raise SystemExit(f"Official ACM reproduction check FAILED:\n{message}")
+        raise SystemExit(f"NY Fed ACM reproduction check FAILED:\n{message}")
 
     # Build per-family summary for the PASS message
     family_stats: dict[str, dict[str, float]] = {}
@@ -923,7 +921,7 @@ def assert_official_reproduced(
     fam_summary = "\n".join(fam_lines)
 
     print(
-        f"\nOfficial ACM reproduction check PASSED.\n"
+        f"\nNY Fed ACM reproduction check PASSED.\n"
         f"Per-family stats:\n{fam_summary}\n"
         f"Identity residual (max |ACMY-ACMRNY-ACMTP|): {identity_max:.6g} bp"
     )
@@ -937,8 +935,8 @@ def main() -> None:
         "--official",
         default=None,
         help=(
-            "Optional official ACMTermPremium.xls URL or local path for exact "
-            "sample dates and comparison."
+            "Optional NY Fed ACMTermPremium.xls URL or local path for "
+            "sample dates and comparison data."
         ),
     )
     parser.add_argument(
@@ -968,8 +966,8 @@ def main() -> None:
         "--assert-official-reproduced",
         action="store_true",
         help=(
-            "With --official, fail unless the official monthly and daily ACM "
-            "panels are fully reproduced within --max-abs-diff-bp."
+            "With --official, fail unless the NY Fed monthly and daily ACM "
+            "panels match the generated panels within --max-abs-diff-bp."
         ),
     )
     parser.add_argument(
@@ -1014,7 +1012,7 @@ def main() -> None:
         default=5,
         help=(
             "Maximum recent tail gap (in business days from the latest GSW date) "
-            "that is silently tolerated when official dates are missing from GSW. "
+            "that is silently tolerated when NY Fed dates are missing from GSW. "
             "Gaps above this tolerance but within 15 bd emit a WARNING. "
             "Gaps > 15 bd always fail. Default: 5."
         ),
@@ -1024,7 +1022,7 @@ def main() -> None:
         type=float,
         default=None,
         help=(
-            "Deprecated compatibility option. With --official, run the full "
+            "Deprecated compatibility option. With --official, run the "
             "reproduction verification (coverage, identity, schema, and "
             "per-family gates) using this value as the maximum absolute "
             "difference threshold in basis points."
@@ -1064,7 +1062,7 @@ def main() -> None:
         official_d = load_official(official_path, DAILY_SHEET)
         monthly_dates = official_m.index
         daily_dates = official_d.index.intersection(curve_d_all.index)
-        sample_mode = "official workbook dates"
+        sample_mode = "NY Fed workbook dates"
     else:
         monthly_dates = completed_monthly_dates(curve_d_all, args.include_partial_current_month)
         daily_dates = curve_d_all.index
@@ -1083,7 +1081,7 @@ def main() -> None:
         for missing_date in tail_m:
             age_bd = int(np.busday_count(gsw_last.date(), missing_date.date()))
             print(
-                f"INFO: Official monthly date {missing_date.strftime('%Y-%m-%d')} "
+                f"INFO: NY Fed monthly date {missing_date.strftime('%Y-%m-%d')} "
                 f"not in GSW (tail gap: {age_bd} bd after gsw_last {gsw_last.date()})."
             )
         # Drop tail-missing dates so we only compute on available GSW dates
@@ -1218,7 +1216,7 @@ def main() -> None:
         print("\nDaily comparison by family:")
         print(daily_by_family.to_string(index=False))
         if len(missing_daily):
-            print("\nMissing official daily dates in current GSW download:")
+            print("\nMissing NY Fed daily dates in current GSW download:")
             print(", ".join(d.strftime("%Y-%m-%d") for d in missing_daily))
 
         if args.check_tolerance_bp is not None:
@@ -1252,7 +1250,7 @@ def main() -> None:
                 generated_daily=generated_daily,
             )
     elif args.assert_official_reproduced or args.check_tolerance_bp is not None:
-        raise SystemExit("Official ACM reproduction check requires --official.")
+        raise SystemExit("NY Fed ACM reproduction check requires --official.")
 
 
 if __name__ == "__main__":

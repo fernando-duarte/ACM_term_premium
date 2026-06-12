@@ -1,6 +1,6 @@
 """Shared pytest fixtures for the offline ACM test suite.
 
-All fixtures produce synthetic, fully deterministic data (seeded with
+All fixtures produce synthetic, deterministic data (seeded with
 np.random.default_rng(0)).  No network I/O is performed here.
 """
 
@@ -24,7 +24,7 @@ import reproduce_acm  # noqa: E402
 
 _RNG_SEED = 0
 _N_MONTHS = 300  # ≈ 25 years of monthly observations
-_N_DAILY_PER_MONTH = 21  # approximate business days per month; keep it simple
+_N_DAILY_PER_MONTH = 21  # approximate business days per month for synthetic fixtures
 
 
 # ---------------------------------------------------------------------------
@@ -148,7 +148,7 @@ def synthetic_fedfunds(synthetic_curve_monthly) -> pd.Series:
 
 @pytest.fixture(scope="session")
 def nominal_acm_model(synthetic_curve_daily, synthetic_curve_monthly) -> reproduce_acm.NominalACM:
-    """A fully-estimated NominalACM model on the synthetic curves."""
+    """An estimated NominalACM model on the synthetic curves."""
     with np.errstate(over="ignore", divide="ignore", invalid="ignore"):
         model = reproduce_acm.NominalACM(
             curve_d=synthetic_curve_daily,

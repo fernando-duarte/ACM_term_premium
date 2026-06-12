@@ -1,7 +1,7 @@
-"""Golden-output regression and end-to-end pipeline tests.
+"""Fixture-output regression and end-to-end pipeline tests.
 
 Gate-1 (offline): these tests detect any change in the model's numerical
-output relative to a committed golden CSV, and exercise the main() CLI
+output relative to a committed fixture CSV, and exercise the main() CLI
 pipeline using only synthetic, in-memory data — no network calls.
 """
 
@@ -18,7 +18,7 @@ import pandas as pd
 import reproduce_acm
 
 # ---------------------------------------------------------------------------
-# Golden-file path (committed into tests/fixtures/)
+# Fixture path (committed into tests/fixtures/)
 # ---------------------------------------------------------------------------
 
 _FIXTURES_DIR = Path(__file__).parent / "fixtures"
@@ -26,12 +26,12 @@ _GOLDEN_PATH = _FIXTURES_DIR / "golden_synthetic_panel.csv"
 
 
 # ===========================================================================
-# Golden-output regression
+# Fixture-output regression
 # ===========================================================================
 
 
-class TestGoldenOutputRegression:
-    """Panel output must match the committed golden CSV to < 1e-9."""
+class TestFixtureOutputRegression:
+    """Panel output must match the committed fixture CSV to < 1e-9."""
 
     def _build_panel(self, nominal_acm_model) -> pd.DataFrame:
         model = nominal_acm_model
@@ -42,33 +42,32 @@ class TestGoldenOutputRegression:
 
         if os.environ.get("REBUILD_GOLDEN") == "1":
             # Deliberate, opt-in regeneration: rebuild the fixture, then fall
-            # through to the comparison so the rebuilt file is sanity-checked.
+            # through to the comparison so the rebuilt file is checked.
             _FIXTURES_DIR.mkdir(parents=True, exist_ok=True)
             panel.to_csv(_GOLDEN_PATH, float_format="%.12f")
 
         assert _GOLDEN_PATH.exists(), (
-            f"Golden file missing at {_GOLDEN_PATH}. It must be committed to the "
-            "repo; regenerate deliberately with REBUILD_GOLDEN=1 python -m pytest "
+            f"Fixture file missing at {_GOLDEN_PATH}. It must be committed to the "
+            "repo; regenerate with REBUILD_GOLDEN=1 python -m pytest "
             "tests/test_determinism.py and review the diff before committing."
         )
 
-        golden = pd.read_csv(_GOLDEN_PATH, index_col="DATE", parse_dates=True)
-        # Strict comparison: any added/removed dates or columns must fail too,
+        expected = pd.read_csv(_GOLDEN_PATH, index_col="DATE", parse_dates=True)
+        # Compare schema and values: added/removed dates or columns must fail too,
         # not just value drift on the overlap.
-        assert panel.index.equals(golden.index), (
-            f"Panel dates differ from golden fixture: {len(panel.index)} rows generated "
-            f"vs {len(golden.index)} in golden."
+        assert panel.index.equals(expected.index), (
+            f"Panel dates differ from fixture: {len(panel.index)} rows generated "
+            f"vs {len(expected.index)} in fixture."
         )
-        assert list(panel.columns) == list(golden.columns), (
-            f"Panel columns differ from golden fixture: {list(panel.columns)} "
-            f"vs {list(golden.columns)}."
+        assert list(panel.columns) == list(expected.columns), (
+            f"Panel columns differ from fixture: {list(panel.columns)} vs {list(expected.columns)}."
         )
 
-        diff = panel.values - golden.values
+        diff = panel.values - expected.values
         max_diff = float(np.abs(diff).max())
         assert max_diff < 1e-9, (
-            f"Panel deviates from golden file by {max_diff:.3e} "
-            f"(threshold 1e-9). Rebuild golden if the model intentionally changed."
+            f"Panel deviates from fixture file by {max_diff:.3e} "
+            f"(threshold 1e-9). Rebuild the fixture if the model change is intentional."
         )
 
     def test_expanded_monthly_panel_csv_round_trip_is_lossless(self, nominal_acm_model):

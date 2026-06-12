@@ -37,7 +37,7 @@ def _make_dti(*dates: str) -> pd.DatetimeIndex:
 
 
 def _clean_panel(dates: list[str]) -> pd.DataFrame:
-    """Build a minimal valid generated panel (ACMY=ACMRNY+ACMTP by construction)."""
+    """Build a small valid generated panel (ACMY=ACMRNY+ACMTP by construction)."""
     idx = pd.DatetimeIndex([pd.Timestamp(d) for d in dates])
     idx.name = "DATE"
     recs = {}
@@ -151,11 +151,11 @@ def test_per_family_rny_rmse_exceeded_produces_failure():
     idx = pd.DatetimeIndex(dates)
     idx.name = "DATE"
 
-    # Build generated and official panels that differ by 0.1 bp in ACMRNY01
+    # Build generated and reference panels that differ by 0.1 bp in ACMRNY01
     # so rmse is 0.1 bp (> default 0.005 threshold).
     gen = _clean_panel(dates)
     off = gen.copy()
-    # Shift ACMRNY01 by 0.001 in panel units (percent) = 0.1 bp in official
+    # Shift ACMRNY01 by 0.001 in panel units (percent) = 0.1 bp in the reference panel
     off["ACMRNY01"] = gen["ACMRNY01"] + 0.001
 
     from reproduce_acm import compare_panel
@@ -397,7 +397,7 @@ def test_schema_gate_detects_duplicate_dates():
 
 
 # ---------------------------------------------------------------------------
-# Schema gate: clean panel passes all schema checks
+# Schema gate: valid panel passes all schema checks
 # ---------------------------------------------------------------------------
 
 
