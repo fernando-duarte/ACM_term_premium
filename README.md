@@ -17,7 +17,7 @@ make clean       # remove outputs and cached downloads
 ```
 
 Outputs are written under `outputs/`, including the reproduced/updated
-workbook, an expanded monthly panel with one-month maturity spacing (6M–120M)
+workbook, an expanded monthly panel with one-month maturity spacing (3M–120M)
 in `.xlsx`/`.csv`/`.csv.gz`, an expanded daily panel in `.csv`/`.csv.gz`, run
 metadata, and comparison evidence. Raw downloads are cached under `data_cache/`
 (`--refresh` forces a new download).

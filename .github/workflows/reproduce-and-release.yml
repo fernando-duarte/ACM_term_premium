@@ -56,8 +56,8 @@ jobs:
           name: ACMTermPremium_reproduced
           path: |
             outputs/ACMTermPremium_reproduced.xlsx
-            outputs/ACMTermPremium_reproduced_monthly_6m_120m.csv.gz
-            outputs/ACMTermPremium_reproduced_daily_6m_120m.csv.gz
+            outputs/ACMTermPremium_reproduced_monthly_3m_120m.csv.gz
+            outputs/ACMTermPremium_reproduced_daily_3m_120m.csv.gz
             outputs/ACMTermPremium_reproduced/run_metadata.csv
             outputs/ACMTermPremium_reproduced/monthly_comparison_by_family.csv
             outputs/ACMTermPremium_reproduced/daily_comparison_by_family.csv
@@ -127,8 +127,8 @@ jobs:
           ## Release assets
 
           - `{workbook_output}` — NY Fed-format workbook (ACM Monthly + ACM Daily)
-          - `{monthly_gz_output}` — expanded monthly CSV (6 m–120 m maturities)
-          - `{daily_gz_output}` — expanded daily CSV (6 m–120 m maturities)
+          - `{monthly_gz_output}` — expanded monthly CSV (3 m–120 m maturities)
+          - `{daily_gz_output}` — expanded daily CSV (3 m–120 m maturities)
           - `{official_input}` — raw NY Fed ACM workbook download used for validation
           - `{gsw_input}` — raw GSW yield-curve parameter download
           - `{fedfunds_input}` — raw federal funds rate download used for short-rate preprocessing
