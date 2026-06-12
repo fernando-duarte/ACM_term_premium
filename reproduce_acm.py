@@ -176,15 +176,29 @@ def load_fedfunds(cache_dir: Path, refresh: bool) -> tuple[pd.Series, Path, str]
 
     errors = []
     for source_name, url, cache_path in sources:
+        # Snapshot the prior cache before a refresh can overwrite it, so a
+        # download that succeeds at the HTTP layer but fails to parse can
+        # still fall back to the last good copy. The fallback is deliberately
+        # low-stakes: FEDFUNDS only feeds the pre-1982 one-month-rate
+        # smoothing, so a slightly stale series cannot move current-period
+        # term premia.
+        stale = cache_path.read_bytes() if refresh and cache_path.exists() else b""
         try:
             raw = read_or_download(url, cache_path, refresh)
             return parse_fedfunds(raw), cache_path, url
         except Exception as exc:
             errors.append(f"{source_name}: {exc!r}")
-            if cache_path.exists() and refresh:
+            if stale:
                 try:
                     source = f"{url} (stale cache fallback)"
-                    return parse_fedfunds(cache_path.read_bytes()), cache_path, source
+                    fedfunds = parse_fedfunds(stale)
+                    # The failed refresh overwrote the cache; restore the last
+                    # good bytes (atomically, like read_or_download) so the
+                    # next run does not start from poison.
+                    restore_temp = cache_path.with_suffix(cache_path.suffix + ".tmp")
+                    restore_temp.write_bytes(stale)
+                    os.replace(restore_temp, cache_path)
+                    return fedfunds, cache_path, source
                 except Exception as cache_exc:
                     errors.append(f"{source_name} cache fallback: {cache_exc!r}")
 

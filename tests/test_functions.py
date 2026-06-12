@@ -485,3 +485,27 @@ class TestReadOrDownload:
         cache_path.write_bytes(b"cached")
         data = reproduce_acm.read_or_download("https://example.com/x.csv", cache_path, refresh=False)
         assert data == b"cached"
+
+
+# ===========================================================================
+# load_fedfunds stale-cache fallback
+# ===========================================================================
+
+
+class TestLoadFedfundsFallback:
+    def test_refresh_parse_failure_falls_back_to_prior_cache(self, tmp_path, monkeypatch):
+        good_csv = b"observation_date,FEDFUNDS\n2020-01-01,1.55\n2020-02-01,1.58\n"
+        cache_path = tmp_path / "H15_FEDFUNDS_monthly.csv"
+        cache_path.write_bytes(good_csv)
+        # Fresh download succeeds at the HTTP layer but is unparseable.
+        monkeypatch.setattr(reproduce_acm, "fetch_url", lambda url: b"<html>maintenance</html>")
+
+        fedfunds, used_path, source = reproduce_acm.load_fedfunds(tmp_path, refresh=True)
+
+        assert "stale cache fallback" in source
+        assert used_path == cache_path
+        assert len(fedfunds) == 2
+        assert fedfunds.iloc[0] == 1.55 / 100.0
+        # The refresh wrote the broken payload to disk; the fallback must
+        # restore the last good copy or the next run starts from poison.
+        assert cache_path.read_bytes() == good_csv
