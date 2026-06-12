@@ -1,6 +1,6 @@
 """Pure-function unit tests for reproduce_acm helper functions.
 
-All tests are fully offline — no network calls, no disk writes outside
+All tests run offline: no network calls and no disk writes outside
 pytest's tmp_path.
 """
 
@@ -188,7 +188,7 @@ class TestParseFedFunds:
     # --- H.15 package format ------------------------------------------------
 
     def _h15_bytes(self, rows: list[tuple[str, str]]) -> bytes:
-        """Build a minimal H.15 package CSV.
+        """Build a small H.15 package CSV.
 
         The real file has a 'Series Description' column in the first 5 rows,
         then a blank skip block, then row 6 starts with "Time Period,RIFSPFF_N.M".
@@ -404,7 +404,7 @@ class TestSmoothPre1982OneMonthRate:
         all_ff = np.concatenate([ff_pre, ff_post])
         all_1m = np.concatenate([yield_pre, yield_post])
 
-        # Build curve_m with all 120 maturity columns; fill cols 2..120 simply
+        # Build curve_m with all 120 maturity columns; fill cols 2..120 deterministically.
         mats = reproduce_acm.ALL_MATURITIES
         n = len(all_dates)
         other_yields = (

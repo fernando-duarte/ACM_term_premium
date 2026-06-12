@@ -1,7 +1,7 @@
 """Algebraic-property tests for NominalACM on synthetic data.
 
-These tests verify mathematical identities and sanity checks on the model
-output; they do not compare to live market data, so they are fully offline.
+These tests verify mathematical identities and structural properties of the
+model output; they do not compare to live market data, so they run offline.
 """
 
 from __future__ import annotations
@@ -99,7 +99,7 @@ class TestShortRateFit:
 
 
 # ===========================================================================
-# Determinism and sanity checks
+# Determinism and finiteness checks
 # ===========================================================================
 
 

@@ -1,4 +1,4 @@
-# Official ACM Reproduction
+# Unofficial ACM Reproduction
 
 Standalone Python code to reproduce and update the NY Fed nominal ACM term
 premium workbook (`ACM Monthly` and `ACM Daily` sheets, columns `ACMY01`–`ACMY10`,
@@ -10,7 +10,7 @@ premium workbook (`ACM Monthly` and `ACM Daily` sheets, columns `ACMY01`–`ACMY
 python3 -m venv .venv && . .venv/bin/activate
 pip install -r requirements.txt
 
-make reproduce   # reproduce the official NY Fed workbook
+make reproduce   # reproduce the NY Fed workbook
 make verify      # reproduce and fail if not within tolerance (CI regression guard)
 make update      # build an updated workbook from current inputs
 make clean       # remove outputs and cached downloads
@@ -22,19 +22,18 @@ in `.xlsx`/`.csv`/`.csv.gz`, an expanded daily panel in `.csv`/`.csv.gz`, run
 metadata, and comparison evidence. Raw downloads are cached under `data_cache/`
 (`--refresh` forces a new download).
 Run `python reproduce_acm.py --help` for all flags and tolerances. Unit tests:
-`pytest tests/test_gates.py -q` (no network required).
+`pytest` (no network required).
 
 A GitHub Actions workflow verifies the reproduction on pushes, pull requests,
 and a monthly schedule, and publishes a monthly GitHub release with the
-official-format workbook, monthly and daily expanded gzip CSVs, and the raw
-downloaded inputs used for the run. Release assets are intentionally limited
-to those files.
+NY Fed-format workbook, monthly and daily expanded gzip CSVs, and the raw
+downloaded inputs used for the run. Release assets contain only those files.
 
 ## Sources
 
 - Adrian, Tobias, Richard K. Crump, and Emanuel Moench (2013), "Pricing the
   Term Structure with Linear Regressions," *Journal of Financial Economics*
-  110(1): 110–138. Paper and official data:
+  110(1): 110–138. Paper and NY Fed data:
   [NY Fed term premia page](https://www.newyorkfed.org/research/data_indicators/term-premia-tabs).
 - Gürkaynak, Refet S., Brian Sack, and Jonathan H. Wright (2007), "The U.S.
   Treasury Yield Curve: 1961 to the Present," *Journal of Monetary Economics*

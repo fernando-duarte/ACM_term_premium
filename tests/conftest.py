@@ -1,22 +1,16 @@
 """Shared pytest fixtures for the offline ACM test suite.
 
-All fixtures produce synthetic, fully deterministic data (seeded with
+All fixtures produce synthetic, deterministic data (seeded with
 np.random.default_rng(0)).  No network I/O is performed here.
 """
 
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-
 import numpy as np
 import pandas as pd
 import pytest
 
-# Ensure `import reproduce_acm` works regardless of invocation directory.
-sys.path.insert(0, str(Path(__file__).parent.parent))
-
-import reproduce_acm  # noqa: E402
+import reproduce_acm
 
 # ---------------------------------------------------------------------------
 # Constants that drive synthetic data generation
@@ -24,7 +18,6 @@ import reproduce_acm  # noqa: E402
 
 _RNG_SEED = 0
 _N_MONTHS = 300  # ≈ 25 years of monthly observations
-_N_DAILY_PER_MONTH = 21  # approximate business days per month; keep it simple
 
 
 # ---------------------------------------------------------------------------
@@ -65,14 +58,8 @@ def _make_nss_params(rng: np.random.Generator, n: int) -> pd.DataFrame:
 
 
 # ---------------------------------------------------------------------------
-# Module-scoped fixtures
+# Session-scoped fixtures
 # ---------------------------------------------------------------------------
-
-
-@pytest.fixture(scope="module")
-def rng() -> np.random.Generator:
-    """Seeded random generator shared across a test module."""
-    return np.random.default_rng(_RNG_SEED)
 
 
 @pytest.fixture(scope="session")
@@ -148,7 +135,7 @@ def synthetic_fedfunds(synthetic_curve_monthly) -> pd.Series:
 
 @pytest.fixture(scope="session")
 def nominal_acm_model(synthetic_curve_daily, synthetic_curve_monthly) -> reproduce_acm.NominalACM:
-    """A fully-estimated NominalACM model on the synthetic curves."""
+    """An estimated NominalACM model on the synthetic curves."""
     with np.errstate(over="ignore", divide="ignore", invalid="ignore"):
         model = reproduce_acm.NominalACM(
             curve_d=synthetic_curve_daily,
