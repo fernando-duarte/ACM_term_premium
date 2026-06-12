@@ -1,6 +1,6 @@
 PYTHON ?= python3
 OFFICIAL ?= https://www.newyorkfed.org/medialibrary/media/research/data_indicators/ACMTermPremium.xls
-REPRO_OUTPUT ?= outputs/ACMTermPremium_reproduced.xlsx
+REPRO_OUTPUT ?= outputs/ACMTermPremium_replicated.xlsx
 UPDATE_OUTPUT ?= outputs/ACMTermPremium_updated.xlsx
 MAX_ABS_DIFF_BP ?= 0.01
 

@@ -18,7 +18,7 @@ MONTHLY_SHEET = "ACM Monthly"
 DAILY_SHEET = "ACM Daily"
 EXCEL_DATE_FORMAT = "m/d/yyyy"
 
-DEFAULT_REPLICATION_OUTPUT = Path("outputs/ACMTermPremium_reproduced.xlsx")
+DEFAULT_REPLICATION_OUTPUT = Path("outputs/ACMTermPremium_replicated.xlsx")
 DEFAULT_UPDATE_OUTPUT = Path("outputs/ACMTermPremium_updated.xlsx")
 DEFAULT_CACHE_DIR = Path("data_cache")
 

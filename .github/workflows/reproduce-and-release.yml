@@ -51,14 +51,14 @@ jobs:
       - name: Upload CI artifact bundle
         uses: actions/upload-artifact@v7
         with:
-          name: ACMTermPremium_reproduced
+          name: ACMTermPremium_replicated
           path: |
-            outputs/ACMTermPremium_reproduced.xlsx
-            outputs/ACMTermPremium_reproduced_monthly_3m_120m.csv.gz
-            outputs/ACMTermPremium_reproduced_daily_3m_120m.csv.gz
-            outputs/ACMTermPremium_reproduced/run_metadata.csv
-            outputs/ACMTermPremium_reproduced/monthly_comparison_by_family.csv
-            outputs/ACMTermPremium_reproduced/daily_comparison_by_family.csv
+            outputs/ACMTermPremium_replicated.xlsx
+            outputs/ACMTermPremium_replicated_monthly_3m_120m.csv.gz
+            outputs/ACMTermPremium_replicated_daily_3m_120m.csv.gz
+            outputs/ACMTermPremium_replicated/run_metadata.csv
+            outputs/ACMTermPremium_replicated/monthly_comparison_by_family.csv
+            outputs/ACMTermPremium_replicated/daily_comparison_by_family.csv
           if-no-files-found: error
 
       - name: Build release metadata
@@ -72,7 +72,7 @@ jobs:
           from datetime import datetime, timezone
           from pathlib import Path
 
-          diagnostics = Path("outputs/ACMTermPremium_reproduced")
+          diagnostics = Path("outputs/ACMTermPremium_replicated")
 
           metadata = {}
           with (diagnostics / "run_metadata.csv").open(newline="") as handle:
@@ -159,7 +159,7 @@ jobs:
           import shutil
           from pathlib import Path
 
-          diagnostics = Path("outputs/ACMTermPremium_reproduced")
+          diagnostics = Path("outputs/ACMTermPremium_replicated")
           release_dir = Path(os.environ["RELEASE_ASSETS_DIR"])
           if release_dir.exists():
               shutil.rmtree(release_dir)
