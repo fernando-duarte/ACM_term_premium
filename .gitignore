@@ -5,3 +5,5 @@ __pycache__/
 .pytest_cache/
 *.pyc
 .DS_Store
+.ruff_cache/
+.claude/

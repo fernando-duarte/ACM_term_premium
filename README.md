@@ -76,7 +76,8 @@ make verify
 This runs the reproduction and additionally fails (non-zero exit) if the
 official monthly and daily workbooks are not fully reproduced within the
 configured basis-point tolerance (default `0.01`, override with
-`MAX_ABS_DIFF_BP`). It is a regression guard suitable for CI:
+`MAX_ABS_DIFF_BP`). `make verify` refreshes the cached inputs (network required) so local runs
+match CI. It is a regression guard suitable for CI:
 
 ```bash
 make verify MAX_ABS_DIFF_BP=0.01
