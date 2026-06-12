@@ -63,6 +63,13 @@ def fetch_url(url: str) -> bytes:
     raise RuntimeError(f"Could not download {url}: {last_error!r}")
 
 
+def atomic_write_bytes(path: Path, data: bytes) -> None:
+    # Write-then-rename so an interrupted run never leaves a truncated file.
+    temp_path = path.with_suffix(path.suffix + ".tmp")
+    temp_path.write_bytes(data)
+    os.replace(temp_path, path)
+
+
 def read_or_download(url: str, cache_path: Path, refresh: bool) -> bytes:
     if cache_path.exists() and not refresh:
         data = cache_path.read_bytes()
@@ -74,10 +81,7 @@ def read_or_download(url: str, cache_path: Path, refresh: bool) -> bytes:
 
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     data = fetch_url(url)
-    # Write-then-rename so an interrupted run never leaves a truncated cache.
-    temp_path = cache_path.with_suffix(cache_path.suffix + ".tmp")
-    temp_path.write_bytes(data)
-    os.replace(temp_path, cache_path)
+    atomic_write_bytes(cache_path, data)
     return data
 
 
@@ -194,11 +198,8 @@ def load_fedfunds(cache_dir: Path, refresh: bool) -> tuple[pd.Series, Path, str]
                     source = f"{url} (stale cache fallback)"
                     fedfunds = parse_fedfunds(stale)
                     # The failed refresh overwrote the cache; restore the last
-                    # good bytes (atomically, like read_or_download) so the
-                    # next run does not start from poison.
-                    restore_temp = cache_path.with_suffix(cache_path.suffix + ".tmp")
-                    restore_temp.write_bytes(stale)
-                    os.replace(restore_temp, cache_path)
+                    # good bytes so the next run does not start from poison.
+                    atomic_write_bytes(cache_path, stale)
                     return fedfunds, cache_path, source
                 except Exception as cache_exc:
                     errors.append(f"{source_name} cache fallback: {cache_exc!r}")
@@ -785,9 +786,9 @@ def write_csv_outputs(
 
 
 def ensure_finite(name: str, frame: pd.DataFrame) -> None:
-    bad = ~np.isfinite(frame.to_numpy())
-    if bad.any():
-        row, col = np.argwhere(bad)[0]
+    finite = np.isfinite(frame.to_numpy())
+    if not finite.all():
+        row, col = np.argwhere(~finite)[0]
         raise ValueError(
             f"The {name} contains non-finite values (first at "
             f"{frame.index[row]}, column {frame.columns[col]}); "
@@ -796,7 +797,7 @@ def ensure_finite(name: str, frame: pd.DataFrame) -> None:
 
 
 def metadata_frame(items: list[tuple[str, object]]) -> pd.DataFrame:
-    return pd.DataFrame([(key, value) for key, value in items], columns=["setting", "value"])
+    return pd.DataFrame(items, columns=["setting", "value"])
 
 
 def assert_official_reproduced(

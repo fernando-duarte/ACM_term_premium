@@ -479,10 +479,9 @@ class TestReadOrDownload:
         assert leftovers == []
 
     def test_cache_hit_skips_download(self, tmp_path, monkeypatch):
-        def boom(url):
-            raise AssertionError("must not download on cache hit")
-
-        monkeypatch.setattr(reproduce_acm, "fetch_url", boom)
+        monkeypatch.setattr(
+            reproduce_acm, "fetch_url", lambda url: pytest.fail("must not download on cache hit")
+        )
         cache_path = tmp_path / "cache.csv"
         cache_path.write_bytes(b"cached")
         data = reproduce_acm.read_or_download(
@@ -525,12 +524,8 @@ class TestEnsureFinite:
         frame = pd.DataFrame({"a": [1.0, 2.0]})
         reproduce_acm.ensure_finite("panel", frame)
 
-    def test_raises_on_nan(self):
-        frame = pd.DataFrame({"a": [1.0, np.nan]})
-        with pytest.raises(ValueError, match="panel"):
-            reproduce_acm.ensure_finite("panel", frame)
-
-    def test_raises_on_inf(self):
-        frame = pd.DataFrame({"a": [1.0, np.inf]})
+    @pytest.mark.parametrize("bad_value", [np.nan, np.inf, -np.inf])
+    def test_raises_on_non_finite(self, bad_value):
+        frame = pd.DataFrame({"a": [1.0, bad_value]})
         with pytest.raises(ValueError, match="panel"):
             reproduce_acm.ensure_finite("panel", frame)
