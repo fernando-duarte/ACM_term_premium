@@ -77,6 +77,8 @@ jobs:
           python - <<'PY'
           import csv
           import os
+          import subprocess
+          from datetime import datetime, timezone
           from pathlib import Path
 
           diagnostics = Path("outputs/ACMTermPremium_reproduced")
@@ -94,10 +96,12 @@ jobs:
           monthly_max = max_diff(diagnostics / "monthly_comparison_summary.csv")
           daily_max = max_diff(diagnostics / "daily_comparison_summary.csv")
 
-          release_month = os.popen("date -u +%Y-%m").read().strip()
+          release_month = datetime.now(timezone.utc).strftime("%Y-%m")
           title = f"ACM Term Premium {release_month}"
           tag = f"acm-term-premium-{release_month}"
-          commit = os.popen("git rev-parse HEAD").read().strip()
+          commit = subprocess.run(
+              ["git", "rev-parse", "HEAD"], check=True, capture_output=True, text=True
+          ).stdout.strip()
 
           gsw_url = metadata.get("gsw_url", "")
           fedfunds_url = metadata.get("fedfunds_url", "")
@@ -125,10 +129,21 @@ jobs:
 
           - `ACMTermPremium_reproduced.xlsx` — official-format workbook (ACM Monthly + ACM Daily)
           - `ACMTermPremium_reproduced_monthly_6m_120m.csv.gz` — expanded monthly CSV (6 m–120 m maturities)
-          - `run_metadata.csv` — input URLs, vintages, date ranges, max diffs
+          - `run_metadata.csv` — input URLs, vintages, and date ranges
           - `monthly_comparison_by_family.csv` — monthly reproduction evidence by series family
           - `daily_comparison_by_family.csv` — daily reproduction evidence by series family
           - `SHA256SUMS` — SHA-256 checksums for all release assets
+
+          ## Data license and attribution
+
+          The series in these assets are *reproduced* by this project's code --
+          modified/derived content whose modifications must not be attributed to
+          the Federal Reserve Bank of New York. ACM term premium content: (c)
+          Federal Reserve Bank of New York, subject to the Terms of Use at
+          newyorkfed.org; redistribution carries those same terms. GSW
+          yield-curve and H.15 input data are produced by the Board of Governors
+          of the Federal Reserve System (public domain; cite the Board). This
+          project is not affiliated with or endorsed by either institution.
           """
           Path("release_notes.md").write_text(notes)
 
