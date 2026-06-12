@@ -22,6 +22,13 @@ format:
 	$(PYTHON) -m ruff check --fix .
 	$(PYTHON) -m ruff format .
 
+lint:
+	$(PYTHON) -m pre_commit run --all-files
+
+format:
+	$(PYTHON) -m ruff check --fix .
+	$(PYTHON) -m ruff format .
+
 clean:
 	rm -rf outputs data_cache __pycache__
 
