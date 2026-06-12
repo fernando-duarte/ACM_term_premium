@@ -70,7 +70,7 @@ class TestFixtureOutputRegression:
             f"(threshold 1e-9). Rebuild the fixture if the model change is intentional."
         )
 
-    def test_expanded_monthly_panel_csv_round_trip_is_lossless(self, nominal_acm_model):
+    def test_expanded_monthly_csv_round_trip_is_lossless(self, nominal_acm_model):
         """Saving the expanded panel to CSV and re-loading must preserve values."""
         model = nominal_acm_model
         panel = reproduce_acm.expanded_acm_panel(model.miy_m, model.tp_m, model.rny_m)
