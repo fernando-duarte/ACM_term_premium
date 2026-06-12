@@ -1,25 +1,21 @@
-"""Gate tests for reproduce_acm.py — self-contained, no conftest required.
+"""Gate tests for reproduce_acm.py.
 
 All test inputs are constructed inline.  Each test exercises a single gate
 condition and uses a descriptive name rather than a sequential number.
 """
 
-import sys
-from pathlib import Path
-
 import numpy as np
 import pandas as pd
 import pytest
 
-# Ensure the repo root is importable from within the tests/ sub-directory.
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
 from reproduce_acm import (
     PUBLISHED_MATURITIES,
+    assert_official_reproduced,
     check_coverage_gaps,
     check_identity_gate,
     check_schema_gate,
     classify_tail_gap,
+    compare_panel,
     maturity_suffix,
 )
 
@@ -104,6 +100,26 @@ def test_coverage_gap_tail_within_tolerance_passes():
 
 
 # ---------------------------------------------------------------------------
+# Coverage helper: tail gap in the warning window warns without failing
+# ---------------------------------------------------------------------------
+
+
+def test_coverage_gap_tail_in_warning_window_warns_without_failure(capsys):
+    # 2026-06-19 is 10 business days after gsw_last (2026-06-05): above the
+    # tolerance of 5 but within the 15-bd hard cap, so it must warn but pass.
+    gsw_last = _make_date("2026-06-05")
+    missing = _make_dti("2026-06-19")
+    failures: list[str] = []
+
+    check_coverage_gaps(missing, gsw_last, "daily", max_tail_gap_bd=5, failures=failures)
+
+    assert failures == [], f"Expected no failures; got: {failures}"
+    captured = capsys.readouterr()
+    assert "WARNING" in captured.out
+    assert "2026-06-19" in captured.out
+
+
+# ---------------------------------------------------------------------------
 # Coverage helper: tail gap beyond 15 bd must fail
 # ---------------------------------------------------------------------------
 
@@ -145,8 +161,6 @@ def test_coverage_gap_hard_cap_not_bypassed_by_large_tolerance():
 
 def test_per_family_rny_rmse_exceeded_produces_failure():
     """A synthetic summary where ACMRNY rmse exceeds --max-rmse-bp should fail."""
-    from reproduce_acm import assert_official_reproduced
-
     dates = ["2020-01-31", "2020-02-28", "2020-03-31"]
     idx = pd.DatetimeIndex(dates)
     idx.name = "DATE"
@@ -157,8 +171,6 @@ def test_per_family_rny_rmse_exceeded_produces_failure():
     off = gen.copy()
     # Shift ACMRNY01 by 0.001 in panel units (percent) = 0.1 bp in the reference panel
     off["ACMRNY01"] = gen["ACMRNY01"] + 0.001
-
-    from reproduce_acm import compare_panel
 
     monthly_summary, _ = compare_panel(gen, off)
 
@@ -189,15 +201,11 @@ def test_per_family_rny_rmse_exceeded_produces_failure():
 
 
 def test_per_family_all_within_limits_passes():
-    from reproduce_acm import assert_official_reproduced
-
     dates = ["2020-01-31", "2020-02-28", "2020-03-31"]
     gen = _clean_panel(dates)
     off = gen.copy()
     # Tiny diff: 1e-7 (1e-5 bp) — well within all thresholds
     off["ACMRNY01"] = gen["ACMRNY01"] + 1e-7
-
-    from reproduce_acm import compare_panel
 
     monthly_summary, _ = compare_panel(gen, off)
 
@@ -231,8 +239,6 @@ def test_bias_gate_detects_dense_systematic_offset():
     plain max-abs-diff gate misses when the error is small but consistently
     signed in one direction.
     """
-    from reproduce_acm import assert_official_reproduced
-
     # 200 monthly observations with a constant 0.02 bp offset on ACMRNY01.
     # rmse = 0.02 bp (> 0.005 default) so we raise max_rmse_bp to 0.1 to let
     # rmse pass; the bias gate (|signed_mean| = 0.02 bp > 0.001) should trip.
@@ -245,8 +251,6 @@ def test_bias_gate_detects_dense_systematic_offset():
     off = gen.copy()
     # systematic offset of 0.0002 in panel units (percent) = 0.02 bp on one ACMRNY column
     off["ACMRNY01"] = gen["ACMRNY01"] + 0.0002
-
-    from reproduce_acm import compare_panel
 
     monthly_summary, _ = compare_panel(gen, off)
 
@@ -277,8 +281,6 @@ def test_bias_gate_detects_dense_systematic_offset():
 
 
 def test_by_family_summary_includes_bias_statistic():
-    from reproduce_acm import compare_panel
-
     dates = ["2020-01-31", "2020-02-28", "2020-03-31"]
     gen = _clean_panel(dates)
     off = gen.copy()

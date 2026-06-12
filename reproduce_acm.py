@@ -22,9 +22,6 @@ DEFAULT_REPRODUCTION_OUTPUT = Path("outputs/ACMTermPremium_reproduced.xlsx")
 DEFAULT_UPDATE_OUTPUT = Path("outputs/ACMTermPremium_updated.xlsx")
 DEFAULT_CACHE_DIR = Path("data_cache")
 
-OFFICIAL_ACM_URL = (
-    "https://www.newyorkfed.org/medialibrary/media/research/data_indicators/ACMTermPremium.xls"
-)
 GSW_URL = "https://www.federalreserve.gov/data/yield-curve-tables/feds200628.csv"
 FEDFUNDS_URL = "https://fred.stlouisfed.org/graph/fredgraph.csv?id=FEDFUNDS"
 # H.15 data-download "package" CSV for the monthly effective federal funds rate
@@ -41,7 +38,6 @@ PC_MATURITIES = list(range(3, 121))
 SELECTED_RETURN_MATURITIES = [6, 12, 24, 36, 48, 60, 72, 84, 96, 108, 120]
 PUBLISHED_MATURITIES = list(range(12, 121, 12))
 EXPANDED_OUTPUT_MATURITIES = list(range(6, 121))
-EXPANDED_MONTHLY_MATURITIES = EXPANDED_OUTPUT_MATURITIES
 ALL_MATURITIES = list(range(1, 121))
 SMOOTHING_START = pd.Period("1982-01", freq="M")
 
@@ -487,14 +483,6 @@ def expanded_acm_panel(
     return acm_panel(miy, tp, rny, EXPANDED_OUTPUT_MATURITIES)
 
 
-def expanded_monthly_panel(
-    miy: pd.DataFrame,
-    tp: pd.DataFrame,
-    rny: pd.DataFrame,
-) -> pd.DataFrame:
-    return expanded_acm_panel(miy, tp, rny)
-
-
 def _column_family(column: str) -> str:
     """Return the ACM family prefix for a column name."""
     if column.startswith("ACMRNY"):
@@ -597,14 +585,13 @@ def check_coverage_gaps(
                 f"(tail gap {age_bd} bd from gsw_last {gsw_last.date()} "
                 f"exceeds 15-bd maximum)."
             )
-        elif age_bd <= max_tail_gap_bd:
-            pass  # tolerate silently
-        else:
+        elif age_bd > max_tail_gap_bd:
             print(
                 f"WARNING: NY Fed {label} date {date_str} missing from GSW "
                 f"(tail gap {age_bd} bd from gsw_last {gsw_last.date()}); "
                 f"within 15-bd warning window."
             )
+        # Gaps of at most max_tail_gap_bd business days are tolerated silently.
 
 
 def check_identity_gate(
@@ -814,10 +801,10 @@ def assert_official_reproduced(
     missing_daily: pd.DatetimeIndex,
     max_abs_diff_bp: float,
     gsw_last: pd.Timestamp,
-    max_tail_gap_bd: int = 5,
-    acmy_max_abs_diff_bp: float = 1e-4,
-    max_rmse_bp: float = 0.005,
-    max_bias_bp: float = 0.001,
+    max_tail_gap_bd: int,
+    acmy_max_abs_diff_bp: float,
+    max_rmse_bp: float,
+    max_bias_bp: float,
     generated_monthly: pd.DataFrame | None = None,
     generated_daily: pd.DataFrame | None = None,
 ) -> None:
@@ -869,7 +856,8 @@ def assert_official_reproduced(
                         f"|signed_mean|={bias:.12g} bp >= {max_bias_bp:.12g} bp."
                     )
 
-    # Identity gate: ACMY - ACMRNY - ACMTP = 0 for generated panels
+    # Identity gate (ACMY - ACMRNY - ACMTP = 0) and schema/finiteness gate
+    # on generated panels
     identity_max = 0.0
     for gen_panel, gen_label in (
         (generated_monthly, "generated monthly"),
@@ -879,13 +867,6 @@ def assert_official_reproduced(
             residual = check_identity_gate(gen_panel, gen_label, failures)
             if np.isfinite(residual):
                 identity_max = max(identity_max, residual)
-
-    # Schema/finiteness gate on generated panels
-    for gen_panel, gen_label in (
-        (generated_monthly, "generated monthly"),
-        (generated_daily, "generated daily"),
-    ):
-        if gen_panel is not None and not gen_panel.empty:
             check_schema_gate(gen_panel, gen_label, PUBLISHED_MATURITIES, failures)
 
     if failures:
@@ -1017,17 +998,6 @@ def main() -> None:
             "Gaps > 15 bd always fail. Default: 5."
         ),
     )
-    parser.add_argument(
-        "--check-tolerance-bp",
-        type=float,
-        default=None,
-        help=(
-            "Deprecated compatibility option. With --official, run the "
-            "reproduction verification (coverage, identity, schema, and "
-            "per-family gates) using this value as the maximum absolute "
-            "difference threshold in basis points."
-        ),
-    )
     args = parser.parse_args()
 
     cache_dir = Path(args.cache_dir)
@@ -1040,9 +1010,7 @@ def main() -> None:
         f"{output_path.stem}_monthly_6m_120m{output_path.suffix}"
     )
     expanded_monthly_csv_path = expanded_monthly_output_path.with_suffix(".csv")
-    expanded_monthly_csv_gz_path = expanded_monthly_csv_path.with_suffix(".csv.gz")
     expanded_daily_csv_path = output_path.with_name(f"{output_path.stem}_daily_6m_120m.csv")
-    expanded_daily_csv_gz_path = expanded_daily_csv_path.with_suffix(".csv.gz")
     diagnostics_dir = output_path.with_suffix("")
 
     curve_d_all, gsw_cache = load_gsw_curve(cache_dir, args.refresh)
@@ -1134,6 +1102,15 @@ def main() -> None:
         monthly_summary, monthly_by_family = compare_panel(generated_monthly, official_m)
         daily_summary, daily_by_family = compare_panel(generated_daily, official_d)
 
+    write_official_workbook(output_path, generated_monthly, generated_daily)
+    write_monthly_only_workbook(expanded_monthly_output_path, generated_expanded_monthly)
+    expanded_monthly_csv_path, expanded_monthly_csv_gz_path = write_panel_csvs(
+        expanded_monthly_csv_path, generated_expanded_monthly
+    )
+    expanded_daily_csv_path, expanded_daily_csv_gz_path = write_panel_csvs(
+        expanded_daily_csv_path, generated_expanded_daily
+    )
+
     metadata = metadata_frame(
         [
             ("sample_mode", sample_mode),
@@ -1180,10 +1157,6 @@ def main() -> None:
         ]
     )
 
-    write_official_workbook(output_path, generated_monthly, generated_daily)
-    write_monthly_only_workbook(expanded_monthly_output_path, generated_expanded_monthly)
-    write_panel_csvs(expanded_monthly_csv_path, generated_expanded_monthly)
-    write_panel_csvs(expanded_daily_csv_path, generated_expanded_daily)
     write_csv_outputs(
         diagnostics_dir,
         metadata,
@@ -1219,21 +1192,6 @@ def main() -> None:
             print("\nMissing NY Fed daily dates in current GSW download:")
             print(", ".join(d.strftime("%Y-%m-%d") for d in missing_daily))
 
-        if args.check_tolerance_bp is not None:
-            assert_official_reproduced(
-                monthly_summary,
-                daily_summary,
-                missing_monthly,
-                pd.DatetimeIndex([]),
-                args.check_tolerance_bp,
-                gsw_last=curve_d_all.index.max(),
-                max_tail_gap_bd=args.max_tail_gap_business_days,
-                acmy_max_abs_diff_bp=args.acmy_max_abs_diff_bp,
-                max_rmse_bp=args.max_rmse_bp,
-                max_bias_bp=args.max_bias_bp,
-                generated_monthly=generated_monthly,
-                generated_daily=generated_daily,
-            )
         if args.assert_official_reproduced:
             assert_official_reproduced(
                 monthly_summary,
@@ -1249,7 +1207,7 @@ def main() -> None:
                 generated_monthly=generated_monthly,
                 generated_daily=generated_daily,
             )
-    elif args.assert_official_reproduced or args.check_tolerance_bp is not None:
+    elif args.assert_official_reproduced:
         raise SystemExit("NY Fed ACM reproduction check requires --official.")
 
 

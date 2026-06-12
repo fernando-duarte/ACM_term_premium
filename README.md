@@ -22,7 +22,7 @@ in `.xlsx`/`.csv`/`.csv.gz`, an expanded daily panel in `.csv`/`.csv.gz`, run
 metadata, and comparison evidence. Raw downloads are cached under `data_cache/`
 (`--refresh` forces a new download).
 Run `python reproduce_acm.py --help` for all flags and tolerances. Unit tests:
-`pytest tests/test_gates.py -q` (no network required).
+`pytest` (no network required).
 
 A GitHub Actions workflow verifies the reproduction on pushes, pull requests,
 and a monthly schedule, and publishes a monthly GitHub release with the
