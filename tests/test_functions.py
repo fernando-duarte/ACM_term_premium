@@ -509,3 +509,24 @@ class TestLoadFedfundsFallback:
         # The refresh wrote the broken payload to disk; the fallback must
         # restore the last good copy or the next run starts from poison.
         assert cache_path.read_bytes() == good_csv
+
+
+# ===========================================================================
+# ensure_finite
+# ===========================================================================
+
+
+class TestEnsureFinite:
+    def test_passes_on_finite_frame(self):
+        frame = pd.DataFrame({"a": [1.0, 2.0]})
+        reproduce_acm.ensure_finite("panel", frame)
+
+    def test_raises_on_nan(self):
+        frame = pd.DataFrame({"a": [1.0, np.nan]})
+        with pytest.raises(ValueError, match="panel"):
+            reproduce_acm.ensure_finite("panel", frame)
+
+    def test_raises_on_inf(self):
+        frame = pd.DataFrame({"a": [1.0, np.inf]})
+        with pytest.raises(ValueError, match="panel"):
+            reproduce_acm.ensure_finite("panel", frame)

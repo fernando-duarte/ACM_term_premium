@@ -772,6 +772,17 @@ def write_csv_outputs(
         )
 
 
+def ensure_finite(name: str, frame: pd.DataFrame) -> None:
+    bad = ~np.isfinite(frame.to_numpy())
+    if bad.any():
+        row, col = np.argwhere(bad)[0]
+        raise ValueError(
+            f"The {name} contains non-finite values (first at "
+            f"{frame.index[row]}, column {frame.columns[col]}); "
+            "refusing to write outputs."
+        )
+
+
 def metadata_frame(items: list[tuple[str, object]]) -> pd.DataFrame:
     return pd.DataFrame([(key, value) for key, value in items], columns=["setting", "value"])
 
@@ -1058,8 +1069,10 @@ def main() -> None:
 
     # numpy 2.x on Apple's Accelerate BLAS raises spurious floating-point
     # warnings ("divide by zero / invalid value / overflow encountered in
-    # matmul") on well-conditioned matrix products. Scope the suppression to
-    # the linear-algebra core so genuine numerical issues elsewhere still surface.
+    # matmul") on well-conditioned matrix products. The matmuls are spread
+    # across the whole estimation, so the suppression has to cover it all;
+    # ensure_finite() below catches any genuine non-finite result before
+    # outputs are written.
     with np.errstate(over="ignore", divide="ignore", invalid="ignore"):
         curve_m, smoothing_beta, smoothing_fit_months, smoothed_months = (
             smooth_pre_1982_one_month_rate(curve_m_raw, fedfunds)
@@ -1078,6 +1091,13 @@ def main() -> None:
         model.tp_d.loc[daily_dates],
         model.rny_d.loc[daily_dates],
     )
+
+    for panel_name, panel in (
+        ("generated monthly panel", generated_monthly),
+        ("expanded monthly panel", generated_expanded_monthly),
+        ("generated daily panel", generated_daily),
+    ):
+        ensure_finite(panel_name, panel)
 
     monthly_summary = monthly_by_family = daily_summary = daily_by_family = None
     missing_daily = pd.DatetimeIndex([])
