@@ -470,7 +470,9 @@ class TestReadOrDownload:
     def test_download_writes_cache_atomically(self, tmp_path, monkeypatch):
         monkeypatch.setattr(reproduce_acm, "fetch_url", lambda url: b"payload")
         cache_path = tmp_path / "cache.csv"
-        data = reproduce_acm.read_or_download("https://example.com/x.csv", cache_path, refresh=False)
+        data = reproduce_acm.read_or_download(
+            "https://example.com/x.csv", cache_path, refresh=False
+        )
         assert data == b"payload"
         assert cache_path.read_bytes() == b"payload"
         leftovers = [p for p in tmp_path.iterdir() if p != cache_path]
@@ -483,7 +485,9 @@ class TestReadOrDownload:
         monkeypatch.setattr(reproduce_acm, "fetch_url", boom)
         cache_path = tmp_path / "cache.csv"
         cache_path.write_bytes(b"cached")
-        data = reproduce_acm.read_or_download("https://example.com/x.csv", cache_path, refresh=False)
+        data = reproduce_acm.read_or_download(
+            "https://example.com/x.csv", cache_path, refresh=False
+        )
         assert data == b"cached"
 
 
