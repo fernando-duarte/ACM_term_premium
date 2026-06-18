@@ -37,7 +37,7 @@ N_FACTORS = 5
 PC_MATURITIES = list(range(3, 121))
 SELECTED_RETURN_MATURITIES = [6, 12, 24, 36, 48, 60, 72, 84, 96, 108, 120]
 PUBLISHED_MATURITIES = list(range(12, 121, 12))
-EXPANDED_OUTPUT_MATURITIES = list(range(3, 121))
+EXPANDED_OUTPUT_MATURITIES = list(range(1, 121))
 ALL_MATURITIES = list(range(1, 121))
 SMOOTHING_START = pd.Period("1982-01", freq="M")
 
@@ -1007,10 +1007,10 @@ def main() -> None:
         args.output or (DEFAULT_REPLICATION_OUTPUT if exact_mode else DEFAULT_UPDATE_OUTPUT)
     )
     expanded_monthly_output_path = output_path.with_name(
-        f"{output_path.stem}_monthly_3m_120m{output_path.suffix}"
+        f"{output_path.stem}_monthly_1m_120m{output_path.suffix}"
     )
     expanded_monthly_csv_path = expanded_monthly_output_path.with_suffix(".csv")
-    expanded_daily_csv_path = output_path.with_name(f"{output_path.stem}_daily_3m_120m.csv")
+    expanded_daily_csv_path = output_path.with_name(f"{output_path.stem}_daily_1m_120m.csv")
     diagnostics_dir = output_path.with_suffix("")
 
     curve_d_all, gsw_cache = load_gsw_curve(cache_dir, args.refresh)
@@ -1146,8 +1146,8 @@ def main() -> None:
             ("n_factors", N_FACTORS),
             ("selected_return_maturities", ", ".join(map(str, SELECTED_RETURN_MATURITIES))),
             ("published_output_maturities", "12, 24, ..., 120 months"),
-            ("expanded_monthly_output_maturities", "3, 4, ..., 120 months"),
-            ("expanded_daily_output_maturities", "3, 4, ..., 120 months"),
+            ("expanded_monthly_output_maturities", "1, 2, ..., 120 months"),
+            ("expanded_daily_output_maturities", "1, 2, ..., 120 months"),
             ("short_rate_preprocessing", "1M GSW yield smoothed with FEDFUNDS before 1982-01"),
             ("smoothing_beta_intercept", smoothing_beta[0]),
             ("smoothing_beta_fedfunds", smoothing_beta[1]),

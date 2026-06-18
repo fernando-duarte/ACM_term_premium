@@ -158,3 +158,16 @@ class TestDeterminismAndSanity:
         tp_10y = model.tp_m[120].values
         assert tp_10y.min() > -0.05, "10Y term premium below −5%"
         assert tp_10y.max() < 0.10, "10Y term premium above 10%"
+
+    def test_expanded_panel_starts_at_one_month_with_zero_term_premium(self, nominal_acm_model):
+        """Released expanded panel starts at the 1-month maturity, where the term
+        premium is identically zero (a one-period bond bears no term premium).
+
+        The ``ACMY001M`` column check pins the released start maturity at 1M
+        independently of how EXPANDED_OUTPUT_MATURITIES is wired.
+        """
+        model = nominal_acm_model
+        panel = reproduce_acm.expanded_acm_panel(model.miy_m, model.tp_m, model.rny_m)
+        assert "ACMY001M" in panel.columns, "expanded panel must start at the 1-month maturity"
+        assert (panel["ACMTP001M"] == 0.0).all(), "1-month term premium must be identically zero"
+        assert (model.tp_d[1] == 0.0).all(), "daily 1-month term premium must be identically zero"

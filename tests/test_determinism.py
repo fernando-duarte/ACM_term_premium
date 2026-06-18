@@ -170,7 +170,7 @@ class TestMainEndToEnd:
         # Output workbook should have been created
         assert output_path.exists(), "main() did not write the output workbook"
 
-        daily_gzip = output_path.with_name(f"{output_path.stem}_daily_3m_120m.csv.gz")
+        daily_gzip = output_path.with_name(f"{output_path.stem}_daily_1m_120m.csv.gz")
         assert daily_gzip.exists(), "main() did not write the expanded daily gzip CSV"
         expected_cols = ["DATE"] + [
             f"{prefix}{reproduce_acm.maturity_suffix(maturity)}"
