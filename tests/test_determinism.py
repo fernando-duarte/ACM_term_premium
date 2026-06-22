@@ -180,6 +180,29 @@ class TestMainEndToEnd:
         daily_header = pd.read_csv(daily_gzip, nrows=0)
         assert list(daily_header.columns) == expected_cols
 
+        # Conditional yield variance diagnostic (maturity x horizon, long tidy)
+        variance_path = output_path.with_suffix("") / "acmy_conditional_variance.csv"
+        assert variance_path.exists(), "main() did not write the conditional-variance diagnostic"
+        variance_df = pd.read_csv(variance_path)
+        assert list(variance_df.columns) == [
+            "maturity_months",
+            "horizon_months",
+            "variance_decimal_squared",
+            "variance_bp_squared",
+        ]
+        assert len(variance_df) == len(reproduce_acm.ALL_MATURITIES) * len(
+            reproduce_acm.FORECAST_HORIZONS_MONTHS
+        )
+        assert sorted(variance_df["maturity_months"].unique()) == reproduce_acm.ALL_MATURITIES
+        assert (
+            sorted(variance_df["horizon_months"].unique()) == reproduce_acm.FORECAST_HORIZONS_MONTHS
+        )
+        np.testing.assert_allclose(
+            variance_df["variance_bp_squared"],
+            variance_df["variance_decimal_squared"] * 1e8,
+            rtol=1e-9,
+        )
+
     def test_main_does_not_write_to_repo_outputs(
         self,
         tmp_path: Path,

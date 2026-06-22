@@ -39,6 +39,7 @@ SELECTED_RETURN_MATURITIES = [6, 12, 24, 36, 48, 60, 72, 84, 96, 108, 120]
 PUBLISHED_MATURITIES = list(range(12, 121, 12))
 EXPANDED_OUTPUT_MATURITIES = list(range(1, 121))
 ALL_MATURITIES = list(range(1, 121))
+FORECAST_HORIZONS_MONTHS = list(range(1, 13))
 SMOOTHING_START = pd.Period("1982-01", freq="M")
 
 
@@ -346,6 +347,10 @@ class NominalACM:
         self.lambda0, self.lambda1, self.mu_star, self.phi_star = self.retrieve_lambda()
         self.delta0, self.delta1 = self.short_rate_equation()
         self.a, self.b = self.affine_coefficients(self.lambda0, self.lambda1)
+        self.acmy_conditional_variance = self.conditional_yield_variance(
+            self.b,
+            FORECAST_HORIZONS_MONTHS,
+        )
         self.a_rn, self.b_rn = self.affine_coefficients(
             np.zeros_like(self.lambda0),
             np.zeros_like(self.lambda1),
@@ -447,6 +452,34 @@ class NominalACM:
         multiplier = np.tile(np.array(self.curve_d.columns, dtype=float) / 12.0, (n_obs, 1)).T
         values = (-((np.tile(a.reshape(-1, 1), (1, n_obs)) + b @ factors.T) / multiplier).T).values
         return pd.DataFrame(values, index=factors.index, columns=self.curve_d.columns)
+
+    def conditional_yield_variance(self, b: np.ndarray, horizons: list[int]) -> pd.DataFrame:
+        # Conditional variance of the constant-maturity model yields, in
+        # decimal-rate squared. Var_t(y_{t+h}) = g @ V_{h-1} @ g with the same
+        # loading g = -b/(maturity in years) that compute_yields applies, and
+        # V_{h-1} = sum_{j=0}^{h-1} phi^j @ s0 @ (phi^j)' the h-step VAR
+        # forecast-error covariance (cumulative across horizons). Constant
+        # phi/s0 make it time-invariant, so the result is a maturity x horizon
+        # grid: rows are maturities, columns are forecast horizons in months.
+        sigma = self.s0.reshape(self.n_factors, self.n_factors)
+        maturity_years = np.asarray(self.curve_d.columns, dtype=float) / 12.0
+        yield_loadings = -b / maturity_years[:, None]
+
+        cumulative = np.zeros((self.n_factors, self.n_factors))
+        phi_power = np.eye(self.n_factors)
+        by_horizon = {}
+        for h in range(1, max(horizons) + 1):
+            cumulative = cumulative + phi_power @ sigma @ phi_power.T
+            if h in horizons:
+                by_horizon[h] = np.einsum("ij,jk,ik->i", yield_loadings, cumulative, yield_loadings)
+            phi_power = self.phi @ phi_power
+
+        variance = pd.DataFrame(
+            by_horizon,
+            index=pd.Index(self.curve_d.columns, name="maturity_months"),
+        )
+        variance.columns.name = "horizon_months"
+        return variance
 
 
 def maturity_suffix(maturity_months: int) -> str:
@@ -741,6 +774,7 @@ def write_csv_outputs(
     curve_m_raw: pd.DataFrame,
     curve_m_smoothed: pd.DataFrame,
     fedfunds: pd.Series,
+    yield_variance: pd.DataFrame,
     monthly_summary: pd.DataFrame | None,
     monthly_by_family: pd.DataFrame | None,
     daily_summary: pd.DataFrame | None,
@@ -753,6 +787,11 @@ def write_csv_outputs(
     curve_m_raw.to_csv(outdir / "monthly_gsw_raw.csv", float_format="%.12f")
     curve_m_smoothed.to_csv(outdir / "monthly_gsw_ffr_smoothed.csv", float_format="%.12f")
     fedfunds.to_csv(outdir / "fedfunds.csv", float_format="%.12f")
+    yield_variance.to_csv(
+        outdir / "acmy_conditional_variance.csv",
+        index=False,
+        float_format="%.12g",
+    )
     if monthly_summary is not None:
         monthly_summary.to_csv(
             outdir / "monthly_comparison_summary.csv",
@@ -1157,6 +1196,11 @@ def main() -> None:
         ]
     )
 
+    yield_variance = (
+        model.acmy_conditional_variance.stack().to_frame("variance_decimal_squared").reset_index()
+    )
+    yield_variance["variance_bp_squared"] = yield_variance["variance_decimal_squared"] * 1e8
+
     write_csv_outputs(
         diagnostics_dir,
         metadata,
@@ -1165,6 +1209,7 @@ def main() -> None:
         curve_m_raw,
         curve_m,
         fedfunds,
+        yield_variance,
         monthly_summary,
         monthly_by_family,
         daily_summary,

@@ -171,3 +171,51 @@ class TestDeterminismAndSanity:
         assert "ACMY001M" in panel.columns, "expanded panel must start at the 1-month maturity"
         assert (panel["ACMTP001M"] == 0.0).all(), "1-month term premium must be identically zero"
         assert (model.tp_d[1] == 0.0).all(), "daily 1-month term premium must be identically zero"
+
+
+# ===========================================================================
+# Conditional yield variance: Var_t(y_{t+h}) grid over maturity and horizon
+# ===========================================================================
+
+
+class TestConditionalYieldVariance:
+    """Var_t(y_{t+h}^(m)) = g_m' V_{h-1} g_m, a maturity x horizon grid."""
+
+    def test_grid_matches_independent_recomputation(self, nominal_acm_model):
+        """Every (maturity, horizon) cell matches V built directly from phi powers."""
+        model = nominal_acm_model
+        sigma = model.s0.reshape(model.n_factors, model.n_factors)
+        phi = model.phi
+        maturity_years = np.asarray(model.curve_d.columns, dtype=float) / 12.0
+        loadings = -model.b / maturity_years[:, None]
+        horizons = reproduce_acm.FORECAST_HORIZONS_MONTHS
+
+        grid = model.acmy_conditional_variance
+        assert grid.index.name == "maturity_months"
+        assert grid.columns.name == "horizon_months"
+        assert list(grid.index) == reproduce_acm.ALL_MATURITIES
+        assert list(grid.columns) == horizons
+        assert np.isfinite(grid.to_numpy()).all()
+        assert (grid.to_numpy() >= -1e-15).all()
+
+        for h in horizons:
+            v = sum(
+                np.linalg.matrix_power(phi, j) @ sigma @ np.linalg.matrix_power(phi, j).T
+                for j in range(h)
+            )
+            expected = np.array([loadings[i] @ v @ loadings[i] for i in range(model.n_maturities)])
+            np.testing.assert_allclose(grid[h].to_numpy(), expected, rtol=1e-12, atol=1e-15)
+
+    def test_one_month_ahead_horizon_uses_innovation_covariance(self, nominal_acm_model):
+        """The h=1 column is exactly g' s0 g, since V_0 = s0."""
+        model = nominal_acm_model
+        sigma = model.s0.reshape(model.n_factors, model.n_factors)
+        maturity_years = np.asarray(model.curve_d.columns, dtype=float) / 12.0
+        loadings = -model.b / maturity_years[:, None]
+        expected = np.array([loadings[i] @ sigma @ loadings[i] for i in range(model.n_maturities)])
+        np.testing.assert_allclose(
+            model.acmy_conditional_variance[1].to_numpy(),
+            expected,
+            rtol=1e-12,
+            atol=1e-15,
+        )
